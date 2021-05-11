@@ -25,6 +25,9 @@ Renderer::Renderer()
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
+
+	//create and FBO
+	illumination_fbo = new FBO();
 }
 
 //renders all the prefab
@@ -192,6 +195,8 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 {
+	render_mode = DEFERRED;
+
 	if (gbuffers_fbo->fbo_id == 0){
 		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
 						3,             //three textures
@@ -199,6 +204,15 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 						GL_UNSIGNED_BYTE, //1 byte
 						true);        //add depth_texture)
 	}
+
+	if (illumination_fbo->fbo_id == 0) {
+		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
+								1,             //three textures
+								GL_RGB,         //four channels
+								GL_UNSIGNED_BYTE, //1 byte
+								false);        //add depth_texture)
+	}
+
 
 	//start rendering inside the gbuffers
 	gbuffers_fbo->bind();
@@ -237,7 +251,70 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
-	gbuffers_fbo->color_textures[1]->toViewport();
+	//start rendering inside the gbuffers
+	illumination_fbo->bind();
+
+	int w = Application::instance->window_width;
+	int h = Application::instance->window_height;
+
+	//we need a fullscreen quad
+	Mesh* quad = Mesh::getQuad();
+
+	//we need a shader specially for this task, lets call it "deferred"
+	Shader* sh = Shader::Get("deferred");
+	sh->enable();
+
+	//pass the gbuffers to the shader
+	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
+	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
+	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
+
+	//pass the inverse projection of the camera to reconstruct world pos.
+	sh->setUniform("u_inverse_viewprojection", camera->viewprojection_matrix.inverse());
+	//pass the inverse window resolution, this may be useful
+	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+
+	//render everything 
+	//Rendering the final scene
+	for (int i = 0; i < calls.size(); ++i)
+	{
+		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
+		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+
+		//if bounding box is inside the camera frustum then the object is probably visible
+		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
+		{
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+		}
+	}
+
+	//stop rendering to the gbuffers
+	illumination_fbo->unbind();
+
+
+	if (show_gbuffers) {
+		//gbuffers_fbo->color_textures[0]->toViewport();
+		int width = Application::instance->window_width;
+		int height = Application::instance->window_height;
+
+		glViewport(0, 0, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[0]->toViewport();
+
+		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[1]->toViewport();
+
+		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+		Shader* depth_shader = Shader::Get("depth");
+		depth_shader->enable();
+		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+		gbuffers_fbo->depth_texture->toViewport(depth_shader);
+		depth_shader->disable();
+		glViewport(0, 0, width, height);
+	}
+
+
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -303,6 +380,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	Texture* texture_met_rough = NULL;
 	Texture* texture_norm = NULL;
 
+	if (render_mode == DEFERRED && material->alpha_mode == BLEND)
+		return;
+
 	texture = material->color_texture.texture;
 	texture_em = material->emissive_texture.texture;
 	texture_met_rough = material->metallic_roughness_texture.texture;
@@ -317,17 +397,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		texture_em = Texture::getWhiteTexture(); //a 1x1 white texture
 	if (!texture_norm)
 		texture_norm = Texture::getBlackTexture(); //a 1x1 white texture
-
-	//select the blending
-	if (material->alpha_mode == GTR::eAlphaMode::BLEND)
-	{
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	}
-	else {
-		glDisable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-	}
 
 	//select if render both sides of the triangles
 	if (material->two_sided)
@@ -356,6 +425,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			break;
 		case SHOW_EMISSIVE:
 			shader = Shader::Get("emissive");
+			break;
+		case DEFERRED:
+			shader = Shader::Get("gbuffers");
 			break;
 	}
 
@@ -388,6 +460,18 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 
 
 	if (render_mode == DEFAULT && light_mode == MULTI) {
+
+		//select the blending
+		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
+		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		}
+		else {
+			glDisable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+		}
+
 		if (lights.size() == 0) //Taking care of the "no lights" scenario
 		{ 
 			shader->setUniform("u_light_type", (int)NO_LIGHT); 

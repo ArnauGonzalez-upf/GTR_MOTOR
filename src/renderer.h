@@ -16,7 +16,8 @@ namespace GTR {
 		SHOW_UVS,
 		SHOW_NORMALS,
 		SHOW_OCCLUSION,
-		SHOW_EMISSIVE
+		SHOW_EMISSIVE,
+		DEFERRED
 	};
 
 	enum eLightMode {
@@ -46,6 +47,8 @@ namespace GTR {
 		std::vector<LightEntity*> lights;
 
 		FBO* gbuffers_fbo;
+		FBO* illumination_fbo;
+		bool show_gbuffers;
 
 		//renders several elements of the scene
 		void renderScene(GTR::Scene* scene, Camera* camera);
