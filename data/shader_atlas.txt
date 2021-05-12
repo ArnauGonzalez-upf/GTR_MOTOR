@@ -746,6 +746,8 @@ uniform sampler2D u_color_texture;
 uniform sampler2D u_normal_texture;
 uniform sampler2D u_extra_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D shadowmap;
+
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 
@@ -778,16 +780,17 @@ uniform bool u_shadows;
 layout(location = 0) out vec4 FragColor;
 
 #include "normal_functions"
-#include "shadow_functiom"
+#include "shadow_function"
 
 void main()
 {
 	//extract uvs from pixel screenpos
     	vec2 uv = gl_FragCoord.xy * u_iRes.xy; 
+	//vec2 uv = v_uv; 
     	vec3 color = texture( u_color_texture, uv ).xyz;
 
     	//normals must be converted from 0..1 to -1..+1
-    	vec3 N = texture( u_normal_texture, uv ).xyz * 2.0 - 1.0;
+    	vec3 N = texture( u_normal_texture, uv ).xyz * 2.0 - vec3(1.0);
     	N = normalize(N); //always normalize in case of data loss
 
    	//reconstruct world position from depth and inv. viewproj
@@ -795,7 +798,6 @@ void main()
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
-	vec3 v_world_position = worldpos;
 
 	vec4 emissive = vec4( u_emissive, 1.0 );
 	//emissive *= texture( u_texture_em, uv );
@@ -811,7 +813,7 @@ void main()
 	if( u_light_type == 2 ) //directional  light
 	{
 		//Defining the position in light space
-		vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);	
+		vec4 v_lightspace_position = u_shadow_viewproj * vec4(worldpos, 1.0);	
 
 		//Defining Normalizing the light vector		
 		vec3 L = normalize(-u_light_vector);
@@ -823,16 +825,16 @@ void main()
 		NdotL = clamp( NdotL, 0.0, 1.0 );
 		
 		//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-		//float shadow_factor = 1.0;
-		//if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
+		float shadow_factor = 1.0;
+		if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
 
 		//store the amount of diffuse light
-		light += u_light_intensity * (NdotL * u_light_color);// * shadow_factor;
+		light += u_light_intensity * (NdotL * u_light_color) * shadow_factor;
 	}
 	else //point and spot light
 	{
 		//Defining the light vector
-		vec3 L = u_light_position - v_world_position;
+		vec3 L = u_light_position - worldpos;
 
 		//Compute distance and define the attenuation factor
 		float light_distance = length( L );
@@ -869,14 +871,14 @@ void main()
 			if (cos_angle > u_light_cutoff)
 			{
 				//Defining the position in light space
-				vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);
+				vec4 v_lightspace_position = u_shadow_viewproj * vec4(worldpos, 1.0);
 
 				//Calculating the spot factor depending on the angle
 				float spotFactor = pow(cos_angle, u_light_exp);
 	
 				//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-				//float shadow_factor = 1.0;
-				//if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
+				float shadow_factor = 1.0;
+				if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
 
 				//compute how much is aligned
 				float NdotL = dot(N,L);
@@ -885,7 +887,7 @@ void main()
 				NdotL = clamp( NdotL, 0.0, 1.0 );
 
 				//store the amount of diffuse light
-				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor;// * shadow_factor;
+				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor * shadow_factor;
 			}
 		}
 	}

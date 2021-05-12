@@ -11,7 +11,7 @@ class Camera;
 namespace GTR {
 
 	enum eRenderMode {
-		DEFAULT,
+		FORWARD,
 		SHOW_TEXTURE,
 		SHOW_UVS,
 		SHOW_NORMALS,

@@ -261,7 +261,7 @@ void Application::renderDebugGUI(void)
 
 	//Chaning render_mode
 	bool changed_render_mode = false;
-	changed_render_mode |= ImGui::Combo("Render Mode", (int*)&renderer->render_mode, "DEFAULT\0SHOW_TEXTURE\0SHOW_UVS\0SHOW_NORMALS\0SHOW_OCCLUSION\0SHOW_EMISSIVE", 6);
+	changed_render_mode |= ImGui::Combo("Render Mode", (int*)&renderer->render_mode, "FORWARD\0SHOW_TEXTURE\0SHOW_UVS\0SHOW_NORMALS\0SHOW_OCCLUSION\0SHOW_EMISSIVE\0DEFERRED", 7);
 
 	//Changing light_mode
 	bool changed_light_mode = false;

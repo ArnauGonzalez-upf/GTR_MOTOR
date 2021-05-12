@@ -18,7 +18,7 @@ using namespace GTR;
 
 Renderer::Renderer()
 {
-	render_mode = eRenderMode::DEFAULT;
+	render_mode = eRenderMode::FORWARD;
 	light_mode = eLightMode::MULTI;
 	pcf = false;
 	depth_viewport = false;
@@ -137,9 +137,9 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		if (ent->entity_type == LIGHT)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
-			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
+			//if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
 				lights.push_back(light);
-			}
+			//}
 		}
 	}
 
@@ -153,8 +153,10 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 			shadowMapping(light, camera);
 	}
 
-	//renderForward(calls, camera);
-	renderDeferred(calls, camera);
+	if (render_mode == FORWARD)
+		renderForward(calls, camera);
+	if (render_mode == DEFERRED)
+		renderDeferred(calls, camera);
 
 	//If render_debug is active, draw the grid
 	if (Application::instance->render_debug)
@@ -195,8 +197,6 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 {
-	render_mode = DEFERRED;
-
 	if (gbuffers_fbo->fbo_id == 0){
 		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
 						3,             //three textures
@@ -256,12 +256,21 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
 	//start rendering inside the gbuffers
-	illumination_fbo->bind();
+	//illumination_fbo->bind();
 	
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
+
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
+	//disable all but the GB0 (and the depth)
+	//illumination_fbo->enableSingleBuffer(0);
+	//clear GB0 with the color (and depth)
 
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
@@ -278,7 +287,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
-	sh->setUniform("u_inverse_viewprojection", camera->viewprojection_matrix.inverse());
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	sh->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
 	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
 
@@ -286,29 +297,22 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 
 	//allow to render pixels that have the same depth as the one in the depth buffer
-	glDepthFunc(GL_LEQUAL);
-	glDisable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_ONE, GL_ONE);
-
-	//disable all but the GB0 (and the depth)
-	gbuffers_fbo->enableSingleBuffer(0);
-	//clear GB0 with the color (and depth)
-	glClearColor(0.1, 0.1, 0.1, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//glDepthFunc(GL_LEQUAL);
 
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
 
 		//first pass doesn't use blending
-		if (i > 0)
+		if (i != 0)
 		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
 			sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
 			sh->setUniform("u_emissive", Vector3(0, 0, 0));
 		}
 
-		/*//If shadows are enabled, pass the shadowmap
+		//If shadows are enabled, pass the shadowmap
 		if (light->cast_shadows)
 		{
 			Texture* shadowmap = light->shadow_fbo->depth_texture;
@@ -316,23 +320,14 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 			Matrix44 shadow_proj = light->camera->viewprojection_matrix;
 			sh->setUniform("u_shadow_viewproj", shadow_proj);
 			sh->setUniform("u_pcf", pcf);
-		}*/
+		}
 
 		//Depending on the type there are other uniforms to pass
-		switch (light->light_type)
-		{
-			float cos_angle;
-		case SPOT:
-			cos_angle = cos(lights[i]->cone_angle * PI / 180);
-			sh->setUniform("u_light_cutoff", cos_angle);
-			sh->setVector3("u_light_vector", light->model.frontVector());
-			sh->setUniform("u_light_exp", light->spot_exp);
-			std::cout << "hola" << std::endl;
-			break;
-		case DIRECTIONAL:
-			sh->setVector3("u_light_vector", light->model.frontVector());
-			break;
-		}
+
+		float cos_angle = cos(lights[i]->cone_angle * PI / 180);
+		sh->setUniform("u_light_cutoff", cos_angle);
+		sh->setVector3("u_light_vector", light->model.frontVector());
+		sh->setUniform("u_light_exp", light->spot_exp);
 
 		//Passing the remaining uniforms
 		sh->setUniform("u_shadows", light->cast_shadows);
@@ -352,7 +347,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_BLEND);
 	
 	//stop rendering to the gbuffers
-	illumination_fbo->unbind();
+	//illumination_fbo->unbind();
 
 	show_gbuffers = false;
 	if (show_gbuffers) {
@@ -377,7 +372,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		depth_shader->disable();
 	}
 
-	illumination_fbo->color_textures[0]->toViewport();
+	//illumination_fbo->color_textures[0]->toViewport();
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -470,7 +465,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 
 	//chose a shader
 	switch (render_mode) {
-		case DEFAULT:
+		case FORWARD:
 			if (light_mode == MULTI) { shader = Shader::Get("light_multi"); }
 			if (light_mode == SINGLE) { shader = Shader::Get("light_single"); }
 			break;
@@ -522,7 +517,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
 
-	if (render_mode == DEFAULT && light_mode == MULTI) {
+	if (render_mode == FORWARD && light_mode == MULTI) {
 
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
@@ -542,7 +537,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		}
 		else { renderMultiPass(mesh, material, shader); }
 	}
-	else if (render_mode == DEFAULT && light_mode == SINGLE) {
+	else if (render_mode == FORWARD && light_mode == SINGLE) {
 		renderSinglePass(shader, mesh);
 	}
 	else { mesh->render(GL_TRIANGLES); }
