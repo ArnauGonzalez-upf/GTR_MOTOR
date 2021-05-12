@@ -715,6 +715,8 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalColor;
 layout(location = 2) out vec4 ExtraColor;
 
+#include "normal_functions"
+
 void main()
 {
 	vec4 color = u_color;
@@ -730,7 +732,14 @@ void main()
 		discard;	
 
 	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
-	vec3 N = normalize(v_normal);	
+	vec3 N = normalize(v_normal);
+	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
+
+	//Perturbing the normal if there is a normalmap
+	if (normal_pixel != vec3(0,0,0))
+	{
+		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
+	}
 
 	FragColor = color;
 	NormalColor = vec4(N * 0.5 + vec3(0.5), 1.0);
@@ -747,6 +756,7 @@ uniform sampler2D u_normal_texture;
 uniform sampler2D u_extra_texture;
 uniform sampler2D u_depth_texture;
 uniform sampler2D shadowmap;
+uniform sampler2D u_texture_normals;
 
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
@@ -785,8 +795,7 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
 	//extract uvs from pixel screenpos
-    	vec2 uv = gl_FragCoord.xy * u_iRes.xy; 
-	//vec2 uv = v_uv; 
+    	vec2 uv = gl_FragCoord.xy * u_iRes.xy;  
     	vec3 color = texture( u_color_texture, uv ).xyz;
 
     	//normals must be converted from 0..1 to -1..+1
