@@ -231,6 +231,11 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
+	//and now enable the second GB to clear it to black
+	gbuffers_fbo->enableSingleBuffer(2);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
 	//enable all buffers back
 	gbuffers_fbo->enableAllBuffers();
 
@@ -251,9 +256,10 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
+	
 	//start rendering inside the gbuffers
 	illumination_fbo->bind();
-
+	
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
@@ -262,6 +268,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	//we need a shader specially for this task, lets call it "deferred"
 	Shader* sh = Shader::Get("deferred");
+
 	sh->enable();
 
 	//pass the gbuffers to the shader
@@ -275,25 +282,79 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//pass the inverse window resolution, this may be useful
 	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
 
+	//Light uniforms
+	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 
-	//render everything 
-	//Rendering the final scene
-	for (int i = 0; i < calls.size(); ++i)
+	//allow to render pixels that have the same depth as the one in the depth buffer
+	glDepthFunc(GL_LEQUAL);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
+
+	//disable all but the GB0 (and the depth)
+	gbuffers_fbo->enableSingleBuffer(0);
+	//clear GB0 with the color (and depth)
+	glClearColor(0.1, 0.1, 0.1, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	for (int i = 0; i < lights.size(); ++i)
 	{
-		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
-		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+		LightEntity* light = lights[i];
 
-		//if bounding box is inside the camera frustum then the object is probably visible
-		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
+		//first pass doesn't use blending
+		if (i > 0)
 		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+			sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
+			sh->setUniform("u_emissive", Vector3(0, 0, 0));
 		}
+
+		/*//If shadows are enabled, pass the shadowmap
+		if (light->cast_shadows)
+		{
+			Texture* shadowmap = light->shadow_fbo->depth_texture;
+			sh->setTexture("shadowmap", shadowmap, 8);
+			Matrix44 shadow_proj = light->camera->viewprojection_matrix;
+			sh->setUniform("u_shadow_viewproj", shadow_proj);
+			sh->setUniform("u_pcf", pcf);
+		}*/
+
+		//Depending on the type there are other uniforms to pass
+		switch (light->light_type)
+		{
+			float cos_angle;
+		case SPOT:
+			cos_angle = cos(lights[i]->cone_angle * PI / 180);
+			sh->setUniform("u_light_cutoff", cos_angle);
+			sh->setVector3("u_light_vector", light->model.frontVector());
+			sh->setUniform("u_light_exp", light->spot_exp);
+			std::cout << "hola" << std::endl;
+			break;
+		case DIRECTIONAL:
+			sh->setVector3("u_light_vector", light->model.frontVector());
+			break;
+		}
+
+		//Passing the remaining uniforms
+		sh->setUniform("u_shadows", light->cast_shadows);
+		sh->setVector3("u_light_position", light->model.getTranslation());
+		sh->setVector3("u_light_color", light->color);
+		sh->setUniform("u_light_maxdist", light->max_distance);
+		sh->setUniform("u_light_type", (int)light->light_type);
+		sh->setUniform("u_light_intensity", light->intensity);
+		sh->setUniform("u_shadow_bias", light->bias);
+
+		//render the mesh
+		quad->render(GL_TRIANGLES);
 	}
 
+	//disable depth test and blend!!
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	
 	//stop rendering to the gbuffers
 	illumination_fbo->unbind();
 
-
+	show_gbuffers = false;
 	if (show_gbuffers) {
 		//gbuffers_fbo->color_textures[0]->toViewport();
 		int width = Application::instance->window_width;
@@ -305,16 +366,18 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[1]->toViewport();
 
+		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[2]->toViewport();
+
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 		Shader* depth_shader = Shader::Get("depth");
 		depth_shader->enable();
 		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
 		gbuffers_fbo->depth_texture->toViewport(depth_shader);
 		depth_shader->disable();
-		glViewport(0, 0, width, height);
 	}
 
-
+	illumination_fbo->color_textures[0]->toViewport();
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)

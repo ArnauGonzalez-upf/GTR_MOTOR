@@ -729,12 +729,12 @@ void main()
 	if(color.a < u_alpha_cutoff)
 		discard;	
 
-	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
+	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
 	vec3 N = normalize(v_normal);	
 
 	FragColor = color;
 	NormalColor = vec4(N * 0.5 + vec3(0.5), 1.0);
-	ExtraColor = vec4(v_world_position,1.0);
+	ExtraColor = material_properties;
 
 }
 
@@ -749,8 +749,36 @@ uniform sampler2D u_depth_texture;
 uniform mat4 u_inverse_viewprojection;
 uniform vec2 u_iRes;
 
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+
+uniform mat4 u_shadow_viewproj;
+
+uniform vec3 u_ambient_light;
+uniform vec3 u_emissive;
+uniform vec3 u_light_position;
+uniform vec3 u_light_vector;
+uniform vec3 u_light_color;
+uniform vec4 u_color;
+
+uniform int u_light_type;
+
+uniform float u_light_cutoff;
+uniform float u_light_maxdist;
+uniform float u_light_intensity;
+uniform float u_light_exp;
+uniform float u_shadow_bias;
+uniform float u_alpha_cutoff;
+
+uniform bool u_pcf;
+uniform bool u_shadows;
+
 //pass here all the uniforms required for illumination...
 layout(location = 0) out vec4 FragColor;
+
+#include "normal_functions"
+#include "shadow_functiom"
 
 void main()
 {
@@ -767,10 +795,16 @@ void main()
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
-
 	vec3 v_world_position = worldpos;
+
+	vec4 emissive = vec4( u_emissive, 1.0 );
+	//emissive *= texture( u_texture_em, uv );
+
+	float occlusion =  texture( u_extra_texture, uv ).x;
+	
     	//now do your illumination using worldpos and the normal...
 	//Summing the ambient light because it always is
+	vec3 light = vec3(0.0);
 	light += u_ambient_light;
 	
 	//depending on the light type...
@@ -789,11 +823,11 @@ void main()
 		NdotL = clamp( NdotL, 0.0, 1.0 );
 		
 		//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-		float shadow_factor = 1.0;
-		if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
+		//float shadow_factor = 1.0;
+		//if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
 
 		//store the amount of diffuse light
-		light += u_light_intensity * (NdotL * u_light_color) * shadow_factor;
+		light += u_light_intensity * (NdotL * u_light_color);// * shadow_factor;
 	}
 	else //point and spot light
 	{
@@ -841,8 +875,8 @@ void main()
 				float spotFactor = pow(cos_angle, u_light_exp);
 	
 				//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-				float shadow_factor = 1.0;
-				if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
+				//float shadow_factor = 1.0;
+				//if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
 
 				//compute how much is aligned
 				float NdotL = dot(N,L);
@@ -851,7 +885,7 @@ void main()
 				NdotL = clamp( NdotL, 0.0, 1.0 );
 
 				//store the amount of diffuse light
-				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor * shadow_factor;
+				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor;// * shadow_factor;
 			}
 		}
 	}
@@ -859,7 +893,7 @@ void main()
 	//Applying light to color
 	light *= occlusion;
 	color.xyz *= light;
-	color.xyz += emissive.xyz;
+	//color.xyz += emissive.xyz;
 
-	FragColor = color;
+	FragColor = vec4(color, 1.0);
 }
