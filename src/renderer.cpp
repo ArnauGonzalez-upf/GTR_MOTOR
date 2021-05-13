@@ -649,6 +649,142 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 	mesh->render(GL_TRIANGLES);
 }
 
+void Renderer::renderToAtlas(Camera* camera) {
+
+	//if render mode is not singlepass or there are no lights or prefabs to show, return
+	if (render_mode != SINGLE_PASS || spotDirCount == 0 || shadow_prefabs.empty())
+		return;
+
+	Shader* shader = NULL;
+	shader = Shader::Get("shadowmap");
+	//no shader? then nothing to render
+	if (!shader)
+		return;
+	shader->enable();
+
+	int res = shadow_resolution; // resolution of texture (1:1 aspect ratio)
+	//first time we create the FBO
+	if (atlas == NULL)
+	{
+		atlas = new FBO();
+		atlas->setDepthOnly(res * (int)ceil(sqrt(spotDirCount)), res * (int)ceil(sqrt(spotDirCount))); //will always be squared
+	}
+
+	atlas->bind();
+
+	//you can disable writing to the color buffer to speed up the rendering as we do not need it
+	glColorMask(false, false, false, false);
+
+	//need to enable scissor test to clear buffer of current window
+	glEnable(GL_SCISSOR_TEST);
+
+	int c = 0; // current light
+	//traverse lights
+	for (int i = 0; i < lights.size(); ++i) {
+		LightEntity* light = lights[i];
+		//we don't control shadows for point lights
+		if (light->light_type == POINT)
+			continue;
+
+		//update light
+		eLightType type = light->light_type;
+		Vector3 eye = light->model.getTranslation();
+		Vector3 front;
+		if (type == DIRECTIONAL)
+			front = Vector3(0.0, 0.0, 0.0);
+		//front = eye + light->model.frontVector();
+		else
+			front = eye + light->model.frontVector();
+		light->shadow.lookAt(eye, front, Vector3(0.0001, 1, 0));
+
+		//clear the depth buffer only (don't care of color) and set viewport to current light
+		int ires = (c % (int)ceil(sqrt(spotDirCount))) * res; //x iterators on texture
+		int jres = (int)(floor(c / ceil(sqrt(spotDirCount)))) * res; //y iterators on texture
+		glScissor(ires, jres, res, res);
+		glClear(GL_DEPTH_BUFFER_BIT);
+		glViewport(ires, jres, res, res);
+		//traverse all prefabs that dont use blending
+		for (int i = 0; i < shadow_prefabs.size(); ++i) {
+			//if prefab is inside the light's camera frustum render it
+			BoundingBox aabb = shadow_prefabs[i]->world_bounding;
+			if (!light->shadow.testBoxInFrustum(aabb.center, aabb.halfsize) && type != DIRECTIONAL) {
+				continue;
+			}
+			//select if render both sides of the triangles
+			if (shadow_prefabs[i]->material->two_sided)
+				glDisable(GL_CULL_FACE);
+			else
+				glEnable(GL_CULL_FACE);
+			assert(glGetError() == GL_NO_ERROR);
+			Mesh* mesh = shadow_prefabs[i]->mesh;
+			Matrix44 model = shadow_prefabs[i]->model;
+			Texture* c_texture = shadow_prefabs[i]->material->color_texture.texture;
+			shader->setUniform("u_shadow_viewproj", light->shadow.viewprojection_matrix);
+			shader->setUniform("u_model", model);
+			shader->setUniform("u_color_texture", c_texture, 5);
+			shader->setUniform("u_alpha_cutoff", shadow_prefabs[i]->material->alpha_mode == GTR::eAlphaMode::MASK ? shadow_prefabs[i]->material->alpha_cutoff : 0);
+			mesh->render(GL_TRIANGLES);
+		}
+		c++; //update light counter
+	}
+	//unbind to render back to the screen
+	atlas->unbind();
+	shader->disable();
+	int w = Application::instance->window_width;
+	int h = Application::instance->window_height;
+	glViewport(0, 0, w, h);
+
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_CULL_FACE);
+
+	//allow to render back to the color buffer
+	glColorMask(true, true, true, true);
+
+}
+
+void Renderer::renderAtlas() {
+	//if render mode is not multipass or we dont activate depth flag or there are no lights to show, return
+	if (render_mode != SINGLE_PASS || !showDepth || spotDirCount == 0)
+		return;
+
+	Shader* atlas_shader = Shader::Get("atlas");
+	glDisable(GL_BLEND);
+
+	int w = Application::instance->window_width;
+	int h = Application::instance->window_height;
+
+	int sz = spotDirCount;
+	int c = 0; //current light
+	Vector2 nearfars[MAX_LIGHTS];
+	int light_types[MAX_LIGHTS];
+	//from vector of lights use only those that cast shadows
+	for (int i = 0; i < lights.size(); ++i) {
+		LightEntity* l = lights[i];
+		if (l->light_type == POINT)
+			continue;
+		//add light params to vectors
+		nearfars[c] = Vector2(l->shadow.near_plane, l->shadow.far_plane);
+		light_types[c] = l->light_type;
+		c++;
+	}
+	atlas_shader->enable();
+
+	//pass entire vectors to the shader
+	atlas_shader->setUniform2Array("u_camera_nearfars", (float*)&nearfars, c);
+	atlas_shader->setUniform1Array("u_light_types", (int*)&light_types, c); //POINT = 0, SPOT = 1, DIRECTIONAL = 2
+	atlas_shader->setUniform("u_total_lights", c);
+
+	//send to viewport
+	int offset = 30;
+	glViewport(offset, offset, w * 0.5 - offset, h * 0.5 - offset);
+	atlas->depth_texture->toViewport(atlas_shader);
+
+	atlas_shader->disable();
+	//set viewport back to default
+	glViewport(0, 0, w, h);
+}
+
+
 
 Texture* GTR::CubemapFromHDRE(const char* filename)
 {

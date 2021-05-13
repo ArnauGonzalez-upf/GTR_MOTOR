@@ -67,6 +67,8 @@ namespace GTR {
 
 		//to create the shadowmaps
 		void shadowMapping(LightEntity* light, Camera* camera);
+		void renderToAtlas(Camera* camera);
+		void renderAtlas();
 
 		//different renders for the different light_modes
 		void renderMultiPass(Mesh* mesh, Material* material, Shader* shader);
