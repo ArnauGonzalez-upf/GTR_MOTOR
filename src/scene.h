@@ -72,6 +72,7 @@ namespace GTR {
 		float spot_exp;
 		float bias;
 		bool cast_shadows;
+		Vector3 uvs; // to know where to read in atlas (xy = uv, z = lenght)
 
 		Camera* camera;
 		FBO* shadow_fbo;

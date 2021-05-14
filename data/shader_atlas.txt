@@ -10,6 +10,7 @@ emissive basic.vs emissive.fs
 light_multi basic.vs light_multi.fs
 light_single basic.vs light_single.fs
 shadowmap basic.vs shadowmap.fs
+atlas quad.vs atlas.fs
 gbuffers basic.vs gbuffers.fs
 deferred quad.vs deferred.fs
 
@@ -86,6 +87,55 @@ float shadow_fact(vec4 v_lightspace_position)
 	else
 	{
 		float shadow_depth = texture(shadowmap, shadow_uv.xy).x; 
+		//we can compare them, even if they are not linear
+		if( shadow_depth < real_depth ) { shadow_factor += 0.0; }
+		else { shadow_factor += 1.0; }  
+	}
+
+	return shadow_factor; 
+}
+
+\shadow_atlas_function
+float shadow_fact(vec4 v_lightspace_position, int type, float bias, sampler2D atlas, vec3 uvs)
+{
+	//from homogeneus space to clip space
+	vec2 shadow_uv = v_lightspace_position.xy / v_lightspace_position.w;
+
+	//from clip space to uv space
+	shadow_uv = shadow_uv * 0.5 + vec2(0.5);
+
+	//read corresponding uv from atlas texture
+	shadow_uv *= uvs.z;
+	shadow_uv.x += uvs.x;
+	shadow_uv.y += uvs.y;
+
+	//get point depth [-1 .. +1] in non-linear space
+	float real_depth = (v_lightspace_position.z - bias) / v_lightspace_position.w;
+	real_depth = real_depth * 0.5 + 0.5;
+
+	//it is outside on the sides
+	if( shadow_uv.x < uvs.x || shadow_uv.x > (uvs.x+uvs.z) || shadow_uv.y < uvs.y || shadow_uv.y > (uvs.y+uvs.z) || real_depth < 0.0 || real_depth > 1.0 )
+		return 1.0;
+	
+	float shadow_factor = 0.0;
+	if (u_pcf)
+	{
+		vec2 texel_size = 1.0 / textureSize(atlas, 0);
+		for(int x = -1; x <= 1; ++x)
+		{
+  			for(int y = -1; y <= 1; ++y)
+  			{	
+        			float shadow_depth = texture(atlas, shadow_uv + vec2(x, y) * texel_size).x; 
+
+				if( shadow_depth < real_depth ) { shadow_factor += 0.0; }
+				else { shadow_factor += 1.0; }    
+    			}    
+		}
+		shadow_factor /= 9.0;
+	}
+	else
+	{
+		float shadow_depth = texture(atlas, shadow_uv).x; 
 		//we can compare them, even if they are not linear
 		if( shadow_depth < real_depth ) { shadow_factor += 0.0; }
 		else { shadow_factor += 1.0; }  
@@ -377,27 +427,37 @@ uniform vec4 u_color;
 
 const int MAX_LIGHTS = 10;
 uniform int u_num_lights;
+uniform int u_shadow_count;
+
+uniform bool u_pcf;
 
 uniform vec3 u_light_position[MAX_LIGHTS];
 uniform vec3 u_light_vector[MAX_LIGHTS];
 uniform vec3 u_light_color[MAX_LIGHTS];
+uniform vec3 u_light_uvs[MAX_LIGHTS];
 
 uniform int u_light_type[MAX_LIGHTS];
+uniform int u_shadows[MAX_LIGHTS];
 
 uniform float u_light_cutoff[MAX_LIGHTS];
 uniform float u_light_maxdist[MAX_LIGHTS];
 uniform float u_light_intensity[MAX_LIGHTS];
 uniform float u_light_exp[MAX_LIGHTS];
+uniform float u_shadow_bias[MAX_LIGHTS];
 uniform float u_alpha_cutoff;
+
+uniform mat4 u_shadow_viewproj[MAX_LIGHTS];
 
 uniform sampler2D u_texture;
 uniform sampler2D u_texture_em;
 uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
+uniform sampler2D u_texture_atlas;
 
 out vec4 FragColor;
 
 #include "normal_functions"
+#include "shadow_atlas_function"
 
 void main()
 {
@@ -429,6 +489,8 @@ void main()
 	//Summing the ambient light because it always is
 	light += u_ambient_light;
 
+	int sdCounts = 0; //counter for spot and directional, to know uv and read from shadow atlas
+
 	for (int i = 0; i < MAX_LIGHTS; ++i)
 	{
 		if (i < u_num_lights)
@@ -436,17 +498,23 @@ void main()
 			//depending on the light type...
 			if( u_light_type[i] == 2 ) //directional  light
 			{
+				float shadow_factor = 1.0;
 				//Normalizing the light vector
 				L = normalize(-u_light_vector[i]);
-		
 				//compute how much is aligned
 				float NdotL = dot(N,L);
 
 				//light cannot be negative (but the dot product can)
 				NdotL = clamp( NdotL, 0.0, 1.0 );
 
+				//Defining the position in light space
+				vec4 v_lightspace_position = u_shadow_viewproj[i] * vec4(v_world_position, 1.0);
+				if (u_shadows[i]==1)
+					shadow_factor = shadow_fact(v_lightspace_position, u_light_type[i], u_shadow_bias[i], u_texture_atlas, u_light_uvs[i]);
+
 				//store the amount of diffuse light
-				light += u_light_intensity[i] * (NdotL * u_light_color[i]);
+				light += u_light_intensity[i] * (NdotL * u_light_color[i]) * shadow_factor;
+				sdCounts++;
 			}
 			else //point and spot light
 			{
@@ -456,6 +524,7 @@ void main()
 				//compute distance and define the attenuation factor
 				float light_distance = length( L );
 				float att_factor;
+				float shadow_factor = 1.0;
 
 				//compute a linear attenuation factor
 				att_factor = u_light_maxdist[i] - light_distance;
@@ -489,6 +558,11 @@ void main()
 					{
 						//Calculating the spot factor depending on the angle
 						float spotFactor = pow(cos_angle, u_light_exp[i]);
+
+						vec4 v_lightspace_position = u_shadow_viewproj[i] * vec4(v_world_position, 1.0);
+						//Calculating the shadow factor
+						if (u_shadows[i]==1)
+							shadow_factor = shadow_fact(v_lightspace_position, u_light_type[i], u_shadow_bias[i], u_texture_atlas, u_light_uvs[i]);
 				
 						//compute how much is aligned
 						float NdotL = dot(N,L);
@@ -497,8 +571,9 @@ void main()
 						NdotL = clamp( NdotL, 0.0, 1.0 );
 
 						//store the amount of diffuse light
-						light += u_light_intensity[i] * (NdotL * u_light_color[i]) * spotFactor * att_factor;
+						light += u_light_intensity[i] * (NdotL * u_light_color[i]) * spotFactor * att_factor * shadow_factor;
 					}
+				sdCounts++;
 				}
 			}
 		}
@@ -907,4 +982,46 @@ void main()
 	//color.xyz += emissive.xyz;
 
 	FragColor = vec4(color, 1.0);
+}
+
+\atlas.fs
+
+#version 330 core
+
+const int MAX_LIGHTS = 10;
+uniform vec2 u_camera_nearfars[MAX_LIGHTS];
+uniform int u_light_types[MAX_LIGHTS];
+uniform int u_total_lights;
+uniform sampler2D u_texture; //atlas
+in vec2 v_uv;
+out vec4 FragColor;
+
+void main()
+{
+	float color = 0.0;
+	vec2 uvs = v_uv;
+	//we want to know to which light would the position uv correspond
+	//atlas matrix will have dimension dim x dim
+	float dim = ceil(sqrt(u_total_lights));
+	int row = -1;
+	int col = -1;
+	for(int i=0;i<dim;++i){
+		float len = (i*1.0)/dim;
+		if(uvs.x>len)
+			col++;
+		if(uvs.y>len)
+			row++;
+	}
+	int c = int(dim)*row + col; //now we know the index of the current light
+	float n = u_camera_nearfars[c].x;
+	float f = u_camera_nearfars[c].y;
+	float z = texture2D(u_texture,v_uv).x;
+	//if light is spotlight use non-linear transformation
+	if (u_light_types[c] == 1)
+		color = n * (z + 1.0) / (f + n - z * (f - n));
+	//else pass the z value to the color
+	else if (u_light_types[c] == 2)
+		color = z;
+
+	FragColor = vec4(color);
 }

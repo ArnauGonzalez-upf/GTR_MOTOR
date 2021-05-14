@@ -257,6 +257,8 @@ void Application::renderDebugGUI(void)
 			int res = 1024 * pow(2, (int)quality);
 			renderer->lights[i]->shadow_fbo->setDepthOnly(res, res);
 		}
+		renderer->atlas->~FBO();
+		renderer->atlas = NULL;
 	}
 
 	//Chaning render_mode

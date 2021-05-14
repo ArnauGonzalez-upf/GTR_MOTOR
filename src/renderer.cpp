@@ -25,6 +25,7 @@ Renderer::Renderer()
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
+	atlas = NULL;
 
 	//create and FBO
 	illumination_fbo = new FBO();
@@ -115,6 +116,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	lights.clear(); //Clearing lights vector
 	calls.clear(); //Cleaning rendercalls vector
+	shadow_count = 0; //resetting counter of shadows
 
 	// Clear the color and the depth buffer
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -137,9 +139,14 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		if (ent->entity_type == LIGHT)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
-			//if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
+
+			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
+				if (light->light_type != POINT) {
+					shadow_count++;
+					//lights.push_back(light);
+				}
 				lights.push_back(light);
-			//}
+			}
 		}
 	}
 
@@ -147,11 +154,17 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	std::sort(calls.begin(), calls.end());
 
 	//Calculate the shadowmaps
-	for (int i = 0; i < lights.size(); ++i) {
-		LightEntity* light = lights[i];
-		if (light->cast_shadows)
-			shadowMapping(light, camera);
+	if (light_mode == MULTI) 
+	{
+		for (int i = 0; i < lights.size(); ++i) 
+		{
+			LightEntity* light = lights[i];
+			if (light->cast_shadows)
+				shadowMapping(light, camera);
+		}
 	}
+	else if (light_mode == SINGLE)
+		renderToAtlas(camera);
 
 	if (render_mode == FORWARD)
 		renderForward(calls, camera);
@@ -163,7 +176,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		//drawGrid();
 
 	//Render one light camera depth map
-	if (lights.size() > 0 && depth_viewport)
+	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
 	{
 		LightEntity* light = lights[depth_light];
 		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
@@ -177,6 +190,8 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 
 		light->shadow_fbo->depth_texture->toViewport(zshader);
 	}
+	if (light_mode == SINGLE && depth_viewport && shadow_count > 0)
+		renderAtlas();
 }
 
 void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
@@ -538,6 +553,12 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		else { renderMultiPass(mesh, material, shader); }
 	}
 	else if (render_mode == FORWARD && light_mode == SINGLE) {
+		//select the blending
+		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
+		{
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		}
 		renderSinglePass(shader, mesh);
 	}
 	else { mesh->render(GL_TRIANGLES); }
@@ -610,14 +631,18 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader )
 void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 {
 	//Defining the vectors that will be passed to the GPU
+	Matrix44 shadow_proj[max_lights];
 	Vector3 light_position[max_lights];
 	Vector3 light_color[max_lights];
-	float light_maxdistance[max_lights];
+	Vector3 light_direction[max_lights];
+	Vector3 light_uvs[max_lights];
 	int light_type[max_lights];
+	float light_maxdistance[max_lights];
 	float light_intensity[max_lights];
 	float light_cutoff[max_lights];
 	float light_exponent[max_lights];
-	Vector3 light_direction[max_lights];
+	float light_bias[max_lights];
+	int light_shadows[max_lights];
 
 	//Filling the vectors
 	for (int i = 0; i < lights.size(); ++i)
@@ -632,18 +657,29 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 		light_cutoff[i] = cos(light->cone_angle * PI / 180);;
 		light_direction[i] = light->model.frontVector();
 		light_exponent[i] = light->spot_exp;
+		light_shadows[i] = (int)light->cast_shadows;
+		light_bias[i] = light->bias;
+		shadow_proj[i] = light->camera->viewprojection_matrix;
+		light_uvs[i] = light->uvs;
 	}
 
 	//Passing all the vectors to the GPU
+	shader->setMatrix44Array("u_shadow_viewproj", shadow_proj, max_lights);
 	shader->setUniform3Array("u_light_position", (float*)&light_position, max_lights);
 	shader->setUniform3Array("u_light_color", (float*)&light_color, max_lights);
+	shader->setUniform3Array("u_light_vector", (float*)&light_direction, max_lights);
+	shader->setUniform3Array("u_light_uvs", (float*)&light_uvs, max_lights);
 	shader->setUniform1Array("u_light_maxdist", (float*)&light_maxdistance, max_lights);
 	shader->setUniform1Array("u_light_type", (int*)&light_type, max_lights);
 	shader->setUniform1Array("u_light_intensity", (float*)&light_intensity, max_lights);
 	shader->setUniform1Array("u_light_cutoff", (float*)&light_cutoff, max_lights);
-	shader->setUniform3Array("u_light_vector", (float*)&light_direction, max_lights);
 	shader->setUniform1Array("u_light_exp", (float*)&light_exponent, max_lights);
+	shader->setUniform1Array("u_shadows", (int*)&light_shadows, max_lights);
+	shader->setUniform1Array("u_shadow_bias", (float*)&light_bias,max_lights);
 	shader->setUniform1("u_num_lights", (int)lights.size());
+	shader->setUniform("u_shadow_count", shadow_count);
+	shader->setUniform("u_pcf", pcf);
+	shader->setUniform("u_texture_atlas", atlas->depth_texture, 8);
 
 	//render the mesh
 	mesh->render(GL_TRIANGLES);
@@ -652,7 +688,7 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 void Renderer::renderToAtlas(Camera* camera) {
 
 	//if render mode is not singlepass or there are no lights or prefabs to show, return
-	if (render_mode != SINGLE_PASS || spotDirCount == 0 || shadow_prefabs.empty())
+	if (shadow_count == 0 || calls.empty())
 		return;
 
 	Shader* shader = NULL;
@@ -662,12 +698,12 @@ void Renderer::renderToAtlas(Camera* camera) {
 		return;
 	shader->enable();
 
-	int res = shadow_resolution; // resolution of texture (1:1 aspect ratio)
+	int res = 1024 * pow(2, (int)Application::instance->quality); // resolution of texture (1:1 aspect ratio)
 	//first time we create the FBO
 	if (atlas == NULL)
 	{
 		atlas = new FBO();
-		atlas->setDepthOnly(res * (int)ceil(sqrt(spotDirCount)), res * (int)ceil(sqrt(spotDirCount))); //will always be squared
+		atlas->setDepthOnly(res * (int)ceil(sqrt(shadow_count)), res * (int)ceil(sqrt(shadow_count))); //will always be squared
 	}
 
 	atlas->bind();
@@ -681,48 +717,68 @@ void Renderer::renderToAtlas(Camera* camera) {
 	int c = 0; // current light
 	//traverse lights
 	for (int i = 0; i < lights.size(); ++i) {
+		
 		LightEntity* light = lights[i];
-		//we don't control shadows for point lights
-		if (light->light_type == POINT)
-			continue;
-
-		//update light
 		eLightType type = light->light_type;
-		Vector3 eye = light->model.getTranslation();
-		Vector3 front;
-		if (type == DIRECTIONAL)
-			front = Vector3(0.0, 0.0, 0.0);
-		//front = eye + light->model.frontVector();
-		else
-			front = eye + light->model.frontVector();
-		light->shadow.lookAt(eye, front, Vector3(0.0001, 1, 0));
+
+		//1update light
+		Vector3 pos;
+		switch (type)
+		{
+		case POINT: continue;  break;
+		case SPOT:
+			light->camera->lookAt(light->model.getTranslation(), light->model * Vector3(0, 0, 1), light->model.rotateVector(Vector3(0, 1, 0)));
+			light->camera->setPerspective(2 * light->cone_angle, Application::instance->window_width / (float)Application::instance->window_width, 0.1f, light->max_distance);
+			break;
+		case DIRECTIONAL:
+			pos = camera->eye - (light->model.rotateVector(Vector3(0, 0, 1)) * 1000);
+			light->camera->lookAt(pos, pos + light->model.rotateVector(Vector3(0, 0, 1)), light->model.rotateVector(Vector3(0, 1, 0)));
+			light->camera->setOrthographic(-light->area_size, light->area_size, -light->area_size, light->area_size, 0.1f, light->max_distance);
+
+			//Texel in world units (assuming rectangular)
+			float grid = (light->camera->right - light->camera->left) / (float)light->shadow_fbo->depth_texture->width;
+
+			//Snap camera X,Y
+			light->camera->view_matrix.M[3][0] = round(light->camera->view_matrix.M[3][0] / grid) * grid;
+			light->camera->view_matrix.M[3][1] = round(light->camera->view_matrix.M[3][1] / grid) * grid;
+
+			//Update viewproj matrix
+			light->camera->viewprojection_matrix = light->camera->view_matrix * light->camera->projection_matrix;
+			break;
+		}
 
 		//clear the depth buffer only (don't care of color) and set viewport to current light
-		int ires = (c % (int)ceil(sqrt(spotDirCount))) * res; //x iterators on texture
-		int jres = (int)(floor(c / ceil(sqrt(spotDirCount)))) * res; //y iterators on texture
+		float len = ceil(sqrt(shadow_count));
+		int ires = (c % (int)len) * res; //x iterators on texture
+		int jres = (int)(floor(c / len)) * res; //y iterators on texture
+		//we may want to pass to shader
+		float wi = (c % (int)len) / len;
+		float hj = floor(c / len) / len;
+		
+		light->uvs = Vector3(wi, hj, 1/len);
 		glScissor(ires, jres, res, res);
 		glClear(GL_DEPTH_BUFFER_BIT);
 		glViewport(ires, jres, res, res);
 		//traverse all prefabs that dont use blending
-		for (int i = 0; i < shadow_prefabs.size(); ++i) {
+		for (int i = 0; i < calls.size(); ++i) {
 			//if prefab is inside the light's camera frustum render it
-			BoundingBox aabb = shadow_prefabs[i]->world_bounding;
-			if (!light->shadow.testBoxInFrustum(aabb.center, aabb.halfsize) && type != DIRECTIONAL) {
+			BoundingBox aabb = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+			if ((!light->camera->testBoxInFrustum(aabb.center, aabb.halfsize) && type != DIRECTIONAL) || calls[i].material->alpha_mode == BLEND) {
 				continue;
 			}
 			//select if render both sides of the triangles
-			if (shadow_prefabs[i]->material->two_sided)
+			if (calls[i].material->two_sided)
 				glDisable(GL_CULL_FACE);
 			else
 				glEnable(GL_CULL_FACE);
 			assert(glGetError() == GL_NO_ERROR);
-			Mesh* mesh = shadow_prefabs[i]->mesh;
-			Matrix44 model = shadow_prefabs[i]->model;
-			Texture* c_texture = shadow_prefabs[i]->material->color_texture.texture;
-			shader->setUniform("u_shadow_viewproj", light->shadow.viewprojection_matrix);
+			Mesh* mesh = calls[i].mesh;
+			Matrix44 model = calls[i].model;
+			Texture* c_texture = calls[i].material->color_texture.texture;
+			shader->setUniform("u_viewprojection", light->camera->viewprojection_matrix);
 			shader->setUniform("u_model", model);
-			shader->setUniform("u_color_texture", c_texture, 5);
-			shader->setUniform("u_alpha_cutoff", shadow_prefabs[i]->material->alpha_mode == GTR::eAlphaMode::MASK ? shadow_prefabs[i]->material->alpha_cutoff : 0);
+			shader->setUniform("u_texture", c_texture, 5);
+			shader->setUniform("u_alpha_cutoff", calls[i].material->alpha_mode == GTR::eAlphaMode::MASK ? calls[i].material->alpha_cutoff : 0);
 			mesh->render(GL_TRIANGLES);
 		}
 		c++; //update light counter
@@ -743,9 +799,6 @@ void Renderer::renderToAtlas(Camera* camera) {
 }
 
 void Renderer::renderAtlas() {
-	//if render mode is not multipass or we dont activate depth flag or there are no lights to show, return
-	if (render_mode != SINGLE_PASS || !showDepth || spotDirCount == 0)
-		return;
 
 	Shader* atlas_shader = Shader::Get("atlas");
 	glDisable(GL_BLEND);
@@ -753,17 +806,17 @@ void Renderer::renderAtlas() {
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
-	int sz = spotDirCount;
+	int sz = shadow_count;
 	int c = 0; //current light
-	Vector2 nearfars[MAX_LIGHTS];
-	int light_types[MAX_LIGHTS];
+	Vector2 nearfars[max_lights];
+	int light_types[max_lights];
 	//from vector of lights use only those that cast shadows
 	for (int i = 0; i < lights.size(); ++i) {
 		LightEntity* l = lights[i];
-		if (l->light_type == POINT)
+		if (l->light_type == POINT || !l->cast_shadows)
 			continue;
 		//add light params to vectors
-		nearfars[c] = Vector2(l->shadow.near_plane, l->shadow.far_plane);
+		nearfars[c] = Vector2(l->camera->near_plane, l->camera->far_plane);
 		light_types[c] = l->light_type;
 		c++;
 	}

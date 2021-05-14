@@ -175,6 +175,7 @@ GTR::LightEntity::LightEntity()
 	shadow_fbo = new FBO();
 	int res = 1024 * pow(2, (int)Application::instance->quality);
 	shadow_fbo->setDepthOnly(res, res);
+	uvs = Vector3();
 }
 
 void GTR::LightEntity::configure(cJSON* json)

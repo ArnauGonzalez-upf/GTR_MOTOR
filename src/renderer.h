@@ -40,12 +40,14 @@ namespace GTR {
 		bool pcf;
 		bool depth_viewport;
 		int depth_light;
+		int shadow_count; //counter for shadows.
 
 		Renderer();
 
 		std::vector<RenderCall> calls;
 		std::vector<LightEntity*> lights;
 
+		FBO* atlas;
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 		bool show_gbuffers;
