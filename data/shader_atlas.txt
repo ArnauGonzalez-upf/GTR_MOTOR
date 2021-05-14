@@ -789,6 +789,7 @@ uniform float u_alpha_cutoff;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalColor;
 layout(location = 2) out vec4 ExtraColor;
+layout(location = 3) out vec4 EmissiveColor;
 
 #include "normal_functions"
 
@@ -799,12 +800,11 @@ void main()
 	
 	//Getting values from textures
 	color *= texture( u_texture, v_uv );
-	//emissive *= texture( u_texture_em, v_uv );
-	//vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
+	emissive *= texture( u_texture_em, v_uv );
 
 	//Check blending
 	if(color.a < u_alpha_cutoff)
-		discard;	
+		discard;
 
 	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
 	vec3 N = normalize(v_normal);
@@ -819,7 +819,7 @@ void main()
 	FragColor = color;
 	NormalColor = vec4(N * 0.5 + vec3(0.5), 1.0);
 	ExtraColor = material_properties;
-
+	EmissiveColor = emissive;
 }
 
 \deferred.fs
@@ -830,6 +830,7 @@ uniform sampler2D u_color_texture;
 uniform sampler2D u_normal_texture;
 uniform sampler2D u_extra_texture;
 uniform sampler2D u_depth_texture;
+uniform sampler2D u_emissive_texture;
 uniform sampler2D shadowmap;
 uniform sampler2D u_texture_normals;
 
@@ -883,8 +884,7 @@ void main()
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 
-	vec4 emissive = vec4( u_emissive, 1.0 );
-	//emissive *= texture( u_texture_em, uv );
+	vec4 emissive = texture( u_emissive_texture, uv );
 
 	float occlusion =  texture( u_extra_texture, uv ).x;
 	
@@ -979,7 +979,7 @@ void main()
 	//Applying light to color
 	light *= occlusion;
 	color.xyz *= light;
-	//color.xyz += emissive.xyz;
+	color.xyz += emissive.xyz;
 
 	FragColor = vec4(color, 1.0);
 }

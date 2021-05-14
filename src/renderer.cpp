@@ -214,7 +214,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 {
 	if (gbuffers_fbo->fbo_id == 0){
 		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
-						3,             //three textures
+						4,             //four textures
 						GL_RGBA,         //four channels
 						GL_UNSIGNED_BYTE, //1 byte
 						true);        //add depth_texture)
@@ -222,7 +222,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	if (illumination_fbo->fbo_id == 0) {
 		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
-								1,             //three textures
+								1,             //one textures
 								GL_RGB,         //four channels
 								GL_UNSIGNED_BYTE, //1 byte
 								false);        //add depth_texture)
@@ -299,6 +299,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
 	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
 	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+	sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 2);
 	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 3);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
@@ -685,7 +686,7 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 	mesh->render(GL_TRIANGLES);
 }
 
-void Renderer::renderToAtlas(Camera* camera) {
+/*void Renderer::renderToAtlas(Camera* camera) {
 
 	//if render mode is not singlepass or there are no lights or prefabs to show, return
 	if (shadow_count == 0 || calls.empty())
@@ -835,7 +836,7 @@ void Renderer::renderAtlas() {
 	atlas_shader->disable();
 	//set viewport back to default
 	glViewport(0, 0, w, h);
-}
+}*/
 
 
 
