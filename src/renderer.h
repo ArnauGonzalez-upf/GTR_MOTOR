@@ -74,11 +74,15 @@ namespace GTR {
 
 		//different renders for the different light_modes
 		void renderMultiPass(Mesh* mesh, Material* material, Shader* shader);
+		void renderMultiPassQuad(Mesh* mesh, Shader* sh);
 		void renderSinglePass(Shader* shader, Mesh* mesh);
 
 		//renderers
 		void renderForward(std::vector<RenderCall> calls, Camera* camera);
 		void renderDeferred(std::vector<RenderCall> calls, Camera* camera);
+
+		//
+		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);
