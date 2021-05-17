@@ -12,7 +12,9 @@ light_single basic.vs light_single.fs
 shadowmap basic.vs shadowmap.fs
 atlas quad.vs atlas.fs
 gbuffers basic.vs gbuffers.fs
-deferred quad.vs deferred.fs
+deferred_multi quad.vs deferred_multi.fs
+deferred_single quad.vs deferred_single.fs
+deferred_ws basic.vs deferred_multi.fs
 
 \normal_functions
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -669,6 +671,7 @@ uniform vec3 u_light_position;
 uniform vec3 u_light_vector;
 uniform vec3 u_light_color;
 uniform vec4 u_color;
+uniform vec3 u_camera_position;
 
 uniform int u_light_type;
 
@@ -678,6 +681,8 @@ uniform float u_light_intensity;
 uniform float u_light_exp;
 uniform float u_shadow_bias;
 uniform float u_alpha_cutoff;
+uniform float u_metallic;
+uniform float u_roughness;
 
 uniform bool u_pcf;
 uniform bool u_shadows;
@@ -692,15 +697,21 @@ out vec4 FragColor;
 
 #include "normal_functions"
 #include "shadow_function"
+#include "PBR_direct_functions"
 
 void main()
 {	
 	vec3 light = vec3( 0.0 );
 	vec4 color = u_color;
 	vec4 emissive = vec4( u_emissive, 1.0 );
+
+	//read from textures
+	vec4 baseColor = texture( u_texture, v_uv ); 					//albedo
+	float metallic = texture(u_texture_metallic_roughness, v_uv).g * u_metallic;	//metallic
+	float roughness = texture(u_texture_metallic_roughness, v_uv).b * u_roughness;	//roughness
 	
 	//Getting values from textures
-	color *= texture( u_texture, v_uv );
+	color *= baseColor;
 	emissive *= texture( u_texture_em, v_uv );
 	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
@@ -717,6 +728,18 @@ void main()
 	{
 		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
 	}
+	//other useful vectors
+	vec3 L;
+	vec3 V = normalize(u_camera_position-v_world_position);
+
+	//Defining the position in light space
+	vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);	
+	//Defining all light attenuation factors
+	float shadow_factor = 1.0;
+	float spot_factor = 1.0;
+	float att_factor = 1.0;
+
+	float NdotL;
 
 	//Summing the ambient light because it always is
 	light += u_ambient_light;
@@ -724,33 +747,21 @@ void main()
 	//depending on the light type...
 	if( u_light_type == 2 ) //directional  light
 	{
-		//Defining the position in light space
-		vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);	
-
 		//Defining Normalizing the light vector		
-		vec3 L = normalize(-u_light_vector);
+		L = normalize(-u_light_vector);
 		
 		//compute how much is aligned
-		float NdotL = dot(N,L);
-
-		//light cannot be negative (but the dot product can)
-		NdotL = clamp( NdotL, 0.0, 1.0 );
+		NdotL = max(dot(N,L),0.0);
 		
-		//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-		float shadow_factor = 1.0;
 		if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
-
-		//store the amount of diffuse light
-		light += u_light_intensity * (NdotL * u_light_color) * shadow_factor;
 	}
 	else //point and spot light
 	{
 		//Defining the light vector
-		vec3 L = u_light_position - v_world_position;
+		L = u_light_position - v_world_position;
 
 		//Compute distance and define the attenuation factor
 		float light_distance = length( L );
-		float att_factor;
 
 		//compute a linear attenuation factor
 		att_factor = u_light_maxdist - light_distance;
@@ -761,48 +772,54 @@ void main()
 		//ignore negative values
 		att_factor = max( att_factor, 0.0 );
 
-		//Normalizing L for the point and spot light dot products
+		//Normalizing L for the dot product
 		L = normalize(L);
+		//compute how much is aligned
+		NdotL = max(dot(N,L),0.0);
 
-		if (u_light_type == 0) //point light
-		{ 
-			//compute how much is aligned
-			float NdotL = dot(N,L);
-
-			//light cannot be negative (but the dot product can)
-			NdotL = clamp( NdotL, 0.0, 1.0 );
-
-			//store the amount of diffuse light
-			light += u_light_intensity * (NdotL * u_light_color) * att_factor;
-		}
 		if (u_light_type == 1) //spot light
 		{
+			spot_factor = 0.0;
 			//Calculating the cos of the angle between vectors
-			float cos_angle = dot(L, normalize(-u_light_vector));
+			float cos_angle = dot(normalize(u_light_vector), -L);
 
 			if (cos_angle > u_light_cutoff)
 			{
-				//Defining the position in light space
-				vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);
-
 				//Calculating the spot factor depending on the angle
-				float spotFactor = pow(cos_angle, u_light_exp);
-	
-				//Defining the shadow_factor as 1.0 and checking if shadows are activated 
-				float shadow_factor = 1.0;
+				spot_factor = pow(cos_angle, u_light_exp);
+
 				if (u_shadows) { shadow_factor = shadow_fact(v_lightspace_position); }
-
-				//compute how much is aligned
-				float NdotL = dot(N,L);
-
-				//light cannot be negative (but the dot product can)
-				NdotL = clamp( NdotL, 0.0, 1.0 );
-
-				//store the amount of diffuse light
-				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor * shadow_factor;
 			}
 		}
 	}
+
+
+	//Vectors & dot products
+	vec3 H = normalize(L+V);
+	float NdotH = max(dot(N,H),0.0);
+	float NdotV = max(dot(N,V),0.0);
+	float LdotH = max(dot(L,H),0.0);
+
+	//we compute the reflection in base to the color and the metalness
+	vec3 F0 = vec3(0.04); //common material
+	F0 = mix( F0, baseColor.xyz, metallic );
+
+	//metallic materials do not have diffuse
+	vec3 diffuseColor = (1.0 - metallic) * baseColor.xyz;
+
+	//compute the specular
+	vec3 Fr_d = specularBRDF(  roughness, F0, NdotH, NdotV, NdotL, LdotH);
+
+	// Here we use the Burley, but you can replace it by the Lambert.
+	// linearRoughness = squared roughness
+	vec3 Fd_d = diffuseColor * Fd_Burley(NdotV,NdotL,LdotH,roughness*roughness); 
+
+	//add diffuse and specular reflection
+	vec3 direct = Fr_d + Fd_d;
+
+	//store the light parameters
+	vec3 light_params = u_light_color * spot_factor * att_factor * shadow_factor * u_light_intensity;
+	light += direct * light_params;
 
 	//Applying light to color
 	light *= occlusion;
@@ -1058,7 +1075,7 @@ void main()
 	EmissiveColor = emissive;
 }
 
-\deferred.fs
+\deferred_multi.fs
 
 #version 330 core
 
@@ -1080,13 +1097,13 @@ in vec2 v_uv;
 uniform mat4 u_shadow_viewproj;
 
 uniform vec3 u_ambient_light;
-uniform vec3 u_emissive;
 uniform vec3 u_light_position;
 uniform vec3 u_light_vector;
 uniform vec3 u_light_color;
 uniform vec4 u_color;
 
 uniform int u_light_type;
+uniform bool u_emissive;
 
 uniform float u_light_cutoff;
 uniform float u_light_maxdist;
@@ -1116,11 +1133,17 @@ void main()
 
    	//reconstruct world position from depth and inv. viewproj
     	float depth = texture( u_depth_texture, uv ).x;
+
+	if (depth == 1.0)
+		discard;
+
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
-
-	vec4 emissive = texture( u_emissive_texture, uv );
+	
+	vec4 emissive;
+	if (u_emissive)
+		emissive = texture( u_emissive_texture, uv );
 
 	float occlusion =  texture( u_extra_texture, uv ).x;
 	
@@ -1208,6 +1231,188 @@ void main()
 
 				//store the amount of diffuse light
 				light += u_light_intensity * (NdotL * u_light_color) * spotFactor * att_factor * shadow_factor;
+			}
+		}
+	}
+
+	//Applying light to color
+	light *= occlusion;
+	color.xyz *= light;
+	color.xyz += emissive.xyz;
+
+	FragColor = vec4(color, 1.0);
+}
+
+
+\deferred_single.fs
+
+#version 330 core
+
+in vec3 v_world_position;
+in vec3 v_normal;
+in vec2 v_uv;
+
+uniform sampler2D u_color_texture;
+uniform sampler2D u_normal_texture;
+uniform sampler2D u_extra_texture;
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_emissive_texture;
+uniform sampler2D u_texture_normals;
+
+uniform mat4 u_inverse_viewprojection;
+uniform vec2 u_iRes;
+
+uniform vec3 u_camera_pos;
+uniform vec3 u_ambient_light;
+uniform vec3 u_emissive;
+uniform vec4 u_color;
+
+const int MAX_LIGHTS = 10;
+uniform int u_num_lights;
+uniform int u_shadow_count;
+
+uniform bool u_pcf;
+
+uniform vec3 u_light_position[MAX_LIGHTS];
+uniform vec3 u_light_vector[MAX_LIGHTS];
+uniform vec3 u_light_color[MAX_LIGHTS];
+uniform vec3 u_light_uvs[MAX_LIGHTS];
+
+uniform int u_light_type[MAX_LIGHTS];
+uniform int u_shadows[MAX_LIGHTS];
+
+uniform float u_light_cutoff[MAX_LIGHTS];
+uniform float u_light_maxdist[MAX_LIGHTS];
+uniform float u_light_intensity[MAX_LIGHTS];
+uniform float u_light_exp[MAX_LIGHTS];
+uniform float u_shadow_bias[MAX_LIGHTS];
+uniform float u_alpha_cutoff;
+
+uniform mat4 u_shadow_viewproj[MAX_LIGHTS];
+uniform sampler2D u_texture_atlas;
+
+out vec4 FragColor;
+
+#include "normal_functions"
+#include "shadow_atlas_function"
+
+void main()
+{
+	//extract uvs from pixel screenpos
+    	vec2 uv = gl_FragCoord.xy * u_iRes.xy;  
+    	vec3 color = texture( u_color_texture, uv ).xyz;
+
+    	//normals must be converted from 0..1 to -1..+1
+    	vec3 N = texture( u_normal_texture, uv ).xyz * 2.0 - vec3(1.0);
+    	N = normalize(N); //always normalize in case of data loss
+
+   	//reconstruct world position from depth and inv. viewproj
+    	float depth = texture( u_depth_texture, uv ).x;
+
+	if (depth == 1.0)
+		discard;
+
+    	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+    	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+    	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+	
+	vec4 emissive = texture( u_emissive_texture, uv );
+
+	float occlusion =  texture( u_extra_texture, uv ).x;
+
+	//Defining the light vector
+	vec3 L;
+	vec3 light = vec3(0.0);
+
+	//Summing the ambient light because it always is
+	light += u_ambient_light;
+
+	int sdCounts = 0; //counter for spot and directional, to know uv and read from shadow atlas
+
+	for (int i = 0; i < MAX_LIGHTS; ++i)
+	{
+		if (i < u_num_lights)
+		{
+			//depending on the light type...
+			if( u_light_type[i] == 2 ) //directional  light
+			{
+				float shadow_factor = 1.0;
+				//Normalizing the light vector
+				L = normalize(-u_light_vector[i]);
+				//compute how much is aligned
+				float NdotL = dot(N,L);
+
+				//light cannot be negative (but the dot product can)
+				NdotL = clamp( NdotL, 0.0, 1.0 );
+
+				//Defining the position in light space
+				vec4 v_lightspace_position = u_shadow_viewproj[i] * vec4(worldpos, 1.0);
+				if (u_shadows[i]==1)
+					shadow_factor = shadow_fact(v_lightspace_position, u_light_type[i], u_shadow_bias[i], u_texture_atlas, u_light_uvs[i]);
+
+				//store the amount of diffuse light
+				light += u_light_intensity[i] * (NdotL * u_light_color[i]) * shadow_factor;
+				sdCounts++;
+			}
+			else //point and spot light
+			{
+				//Defining the light
+				L = u_light_position[i] - worldpos;
+				
+				//compute distance and define the attenuation factor
+				float light_distance = length( L );
+				float att_factor;
+				float shadow_factor = 1.0;
+
+				//compute a linear attenuation factor
+				att_factor = u_light_maxdist[i] - light_distance;
+
+				//normalize factor
+				att_factor /= u_light_maxdist[i];
+
+				//ignore negative values
+				att_factor = max( att_factor, 0.0 );
+
+				//Normalizing L for the point and spot light dot products
+				L = normalize(L);
+
+				if (u_light_type[i] == 0) //point light
+				{
+					//compute how much is aligned
+					float NdotL = dot(N,L);
+
+					//light cannot be negative (but the dot product can)
+					NdotL = clamp( NdotL, 0.0, 1.0 );
+
+					//store the amount of diffuse light
+					light += u_light_intensity[i] * (NdotL * u_light_color[i]) * att_factor;
+				}
+				if (u_light_type[i] == 1) //spot light
+				{
+					//Calculating the angle between vectors
+					float cos_angle = dot(L, normalize(-u_light_vector[i]));
+
+					if (cos_angle > u_light_cutoff[i])
+					{
+						//Calculating the spot factor depending on the angle
+						float spotFactor = pow(cos_angle, u_light_exp[i]);
+
+						vec4 v_lightspace_position = u_shadow_viewproj[i] * vec4(worldpos, 1.0);
+						//Calculating the shadow factor
+						if (u_shadows[i]==1)
+							shadow_factor = shadow_fact(v_lightspace_position, u_light_type[i], u_shadow_bias[i], u_texture_atlas, u_light_uvs[i]);
+				
+						//compute how much is aligned
+						float NdotL = dot(N,L);
+
+						//light cannot be negative (but the dot product can)
+						NdotL = clamp( NdotL, 0.0, 1.0 );
+
+						//store the amount of diffuse light
+						light += u_light_intensity[i] * (NdotL * u_light_color[i]) * spotFactor * att_factor * shadow_factor;
+					}
+				sdCounts++;
+				}
 			}
 		}
 	}
