@@ -518,6 +518,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_model", model);
 	shader->setUniform("u_color", material->color);
 	shader->setUniform("u_emissive", material->emissive_factor);
+	shader->setUniform("u_metallic", material->metallic_factor);
+	shader->setUniform("u_roughness", material->roughness_factor);
 	shader->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 
 	if (texture)
@@ -686,7 +688,7 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 	mesh->render(GL_TRIANGLES);
 }
 
-/*void Renderer::renderToAtlas(Camera* camera) {
+void Renderer::renderToAtlas(Camera* camera) {
 
 	//if render mode is not singlepass or there are no lights or prefabs to show, return
 	if (shadow_count == 0 || calls.empty())
@@ -836,7 +838,7 @@ void Renderer::renderAtlas() {
 	atlas_shader->disable();
 	//set viewport back to default
 	glViewport(0, 0, w, h);
-}*/
+}
 
 
 
