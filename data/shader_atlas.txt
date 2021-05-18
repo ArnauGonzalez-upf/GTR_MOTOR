@@ -867,6 +867,11 @@ uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D shadowmap;
 
+uniform float u_scale;
+uniform float u_average_lum;
+uniform float u_lumwhite2;
+uniform float u_igamma;
+
 out vec4 FragColor;
 
 #include "normal_functions"
@@ -999,7 +1004,20 @@ void main()
 	//color.xyz = color.xyz / (color.xyz + vec3(1.0));
 	//color.xyz = pow(color.xyz, vec3(1.0/2.2));
 
-	FragColor = color;
+	//FragColor = color;
+
+	vec3 rgb = color.xyz;
+
+	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  	float L_HDR = (u_scale / u_average_lum) * lum;
+	float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
+
+    	rgb = (rgb / lum) * Ld;
+    	rgb = max(rgb,vec3(0.001));
+    	rgb = pow( rgb, vec3( u_igamma ) );
+
+	
+	FragColor = vec4(rgb, color.a);
 }
 
 \shadowmap.fs
@@ -1034,13 +1052,12 @@ in vec2 v_uv;
 
 uniform vec4 u_color;
 uniform vec3 u_emissive;
+uniform float u_alpha_cutoff;
 
 uniform sampler2D u_texture;
 uniform sampler2D u_texture_em;
 uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
-
-uniform float u_alpha_cutoff;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalColor;
@@ -1052,15 +1069,17 @@ layout(location = 3) out vec4 EmissiveColor;
 void main()
 {
 	vec4 color = u_color;
-	vec4 emissive = vec4( u_emissive, 1.0 );
-	
+	vec4 emissive = vec4( u_emissive, 1.0 );	
+
 	//Getting values from textures
 	color *= texture( u_texture, v_uv );
 	emissive *= texture( u_texture_em, v_uv );
 
-	//Check blending
-	if(color.a < u_alpha_cutoff)
-		discard;
+	//discard some pixels depending on the pixel screen position and its transparency
+	if( color.a < 0.9 && (floor(mod(gl_FragCoord.x,2.0)) != floor(mod(gl_FragCoord.y,2.0))))
+	{
+        	discard;
+	}
 
 	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
 	vec3 N = normalize(v_normal);
@@ -1117,6 +1136,12 @@ uniform float u_alpha_cutoff;
 
 uniform bool u_pcf;
 uniform bool u_shadows;
+uniform bool u_back;
+
+uniform float u_scale;
+uniform float u_average_lum;
+uniform float u_lumwhite2;
+uniform float u_igamma;
 
 //pass here all the uniforms required for illumination...
 layout(location = 0) out vec4 FragColor;
@@ -1137,8 +1162,11 @@ void main()
    	//reconstruct world position from depth and inv. viewproj
     	float depth = texture( u_depth_texture, uv ).x;
 
-	if (depth == 1.0)
-		discard;
+	if (depth == 1.0 && u_back)
+	{
+		FragColor = vec4(color, 1.0);
+		return;
+	}	
 
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
@@ -1243,7 +1271,18 @@ void main()
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
 
-	FragColor = vec4(color, 1.0);
+	vec3 rgb = color.xyz;
+
+	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  	float L = (u_scale / u_average_lum) * lum;
+	float Ld = (L * (1.0 + L / u_lumwhite2)) / (1.0 + L);
+
+    	rgb = (rgb / lum) * Ld;
+    	rgb = max(rgb,vec3(0.001));
+    	rgb = pow( rgb, vec3( u_igamma ) );
+
+	
+	FragColor = vec4(rgb, 1.0);
 }
 
 

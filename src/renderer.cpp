@@ -146,7 +146,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
 
-			if (light->light_type != DIRECTIONAL && light->lightBounding(camera)) {
+			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
 				if (light->light_type != POINT) {
 					shadow_count++;
 					//lights.push_back(light);
@@ -319,6 +319,13 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//Light uniforms
 	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 	sh->setUniform("u_emissive", true);
+	sh->setUniform("u_back", true);
+
+	sh->setUniform("u_scale", 1.0f);
+	sh->setUniform("u_average_lum", 0.5f);
+	sh->setUniform("u_lumwhite2", 1.0f);
+	sh->setUniform("u_igamma", 2.2f);
+
 	quad->render(GL_TRIANGLES);
 
 	if (light_mode == MULTI) {
@@ -340,6 +347,11 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		sh->setUniform("u_inverse_viewprojection", inv_vp);
 		//pass the inverse window resolution, this may be useful
 		sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+		sh->setUniform("u_scale", 2.0f);
+		sh->setUniform("u_average_lum", 1.5f);
+		sh->setUniform("u_lumwhite2", 2.0f);
+		sh->setUniform("u_igamma", 1.8f);
 
 		renderMultiPassQuad(sh, camera);
 	}
@@ -418,23 +430,11 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	Texture* texture_met_rough = NULL;
 	Texture* texture_norm = NULL;
 
-	if (render_mode == DEFERRED && material->alpha_mode == BLEND)
-		return;
-
 	texture = material->color_texture.texture;
 	texture_em = material->emissive_texture.texture;
 	texture_met_rough = material->metallic_roughness_texture.texture;
 	texture_norm = material->normal_texture.texture;
 	//texture = material->occlusion_texture;
-
-	if (!texture)
-		texture = Texture::getWhiteTexture(); //a 1x1 white texture
-	if (!texture_met_rough)
-		texture_met_rough = Texture::getWhiteTexture(); //a 1x1 white texture
-	if (!texture_em)
-		texture_em = Texture::getWhiteTexture(); //a 1x1 white texture
-	if (!texture_norm)
-		texture_norm = Texture::getBlackTexture(); //a 1x1 white texture
 
 	//select if render both sides of the triangles
 	if (material->two_sided)
@@ -482,9 +482,25 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_model", model);
 	shader->setUniform("u_color", material->color);
 	shader->setUniform("u_emissive", material->emissive_factor);
-	shader->setUniform("u_metallic", material->metallic_factor);
-	shader->setUniform("u_roughness", material->roughness_factor);
 	shader->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
+
+	if (!texture)
+		texture = Texture::getWhiteTexture(); //a 1x1 white texture
+	if (!texture_met_rough) {
+		texture_met_rough = Texture::getWhiteTexture(); //a 1x1 white texture
+		shader->setUniform("u_metallic", 0.0f);
+		shader->setUniform("u_roughness", 0.0f);
+	}
+	else
+	{ 
+		shader->setUniform("u_metallic", material->metallic_factor);
+		shader->setUniform("u_roughness", material->roughness_factor);
+	}
+
+	if (!texture_em)
+		texture_em = Texture::getWhiteTexture(); //a 1x1 white texture
+	if (!texture_norm)
+		texture_norm = Texture::getBlackTexture(); //a 1x1 white texture
 
 	if (texture)
 		shader->setUniform("u_texture", texture, 0);
@@ -543,6 +559,11 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 	//allow to render pixels that have the same depth as the one in the depth buffer
 	glDepthFunc(GL_LEQUAL);
 
+	shader->setUniform("u_scale", 3.0f);
+	shader->setUniform("u_average_lum", 1.f);
+	shader->setUniform("u_lumwhite2", 2.0f);
+	shader->setUniform("u_igamma", 1.5f);
+
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
@@ -600,23 +621,19 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 
 void Renderer::renderMultiPassQuad(Shader* sh, Camera* camera)
 {
-	//allow to render pixels that have the same depth as the one in the depth buffer
-	//glDepthFunc(GL_LEQUAL);
-	glDisable(GL_BLEND);
-	glDepthFunc(GL_LEQUAL);
-
 	//first pass doesn't use blending)
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
 	glEnable(GL_CULL_FACE);
 	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
 	sh->setUniform("u_emissive", false);
+	sh->setUniform("u_back", false);
+
+	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false);
 
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
-
-		Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false);
 
 		//basic.vs will need the model and the viewproj of the camera
 		sh->setUniform("u_viewprojection", camera->viewprojection_matrix);
