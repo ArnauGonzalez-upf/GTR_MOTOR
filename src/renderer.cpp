@@ -146,7 +146,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
 
-			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
+			if (light->light_type != DIRECTIONAL && light->lightBounding(camera)) {
 				if (light->light_type != POINT) {
 					shadow_count++;
 					//lights.push_back(light);
@@ -230,7 +230,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
 								1,             //one textures
 								GL_RGB,         //four channels
-								GL_UNSIGNED_BYTE, //1 byte
+								GL_HALF_FLOAT, //1 byte
 								false);        //add depth_texture)
 	}
 
@@ -244,7 +244,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	gbuffers_fbo->enableSingleBuffer(0);
 
 	//clear GB0 with the color (and depth)
-	glClearColor(0.1, 0.1, 0.1, 1.0);
+	Vector3 bg_color = Scene::instance->background_color;
+	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	//and now enable the second GB to clear it to black
@@ -318,9 +319,30 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//Light uniforms
 	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 	sh->setUniform("u_emissive", true);
+	quad->render(GL_TRIANGLES);
 
-	if (light_mode == MULTI)
-		renderMultiPass(quad, NULL, sh);
+	if (light_mode == MULTI) {
+		//renderMultiPass(quad, NULL, sh);
+		sh = Shader::Get("deferred_ws");
+
+		sh->enable();
+
+		//pass the gbuffers to the shader
+		sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
+		sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
+		sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+		sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 3);
+		sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+
+		//pass the inverse projection of the camera to reconstruct world pos.
+		Matrix44 inv_vp = camera->viewprojection_matrix;
+		inv_vp.inverse();
+		sh->setUniform("u_inverse_viewprojection", inv_vp);
+		//pass the inverse window resolution, this may be useful
+		sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+		renderMultiPassQuad(sh, camera);
+	}
 	if (light_mode == SINGLE)
 		renderSinglePass(sh, quad);
 
@@ -328,7 +350,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	show_gbuffers = false;
 	if (show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
 	}
@@ -577,15 +598,26 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 	}
 }
 
-void Renderer::renderMultiPassQuad(Mesh* mesh, Shader* shader)
+void Renderer::renderMultiPassQuad(Shader* sh, Camera* camera)
 {
 	//allow to render pixels that have the same depth as the one in the depth buffer
 	//glDepthFunc(GL_LEQUAL);
-	/*for (int i = 0; i < lights.size(); ++i)
+	glDisable(GL_BLEND);
+	glDepthFunc(GL_LEQUAL);
+
+	//first pass doesn't use blending)
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
+	glEnable(GL_CULL_FACE);
+	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
+	sh->setUniform("u_emissive", false);
+
+	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
 
-		/*
+		Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false);
+
 		//basic.vs will need the model and the viewproj of the camera
 		sh->setUniform("u_viewprojection", camera->viewprojection_matrix);
 
@@ -597,16 +629,7 @@ void Renderer::renderMultiPassQuad(Mesh* mesh, Shader* shader)
 		m.scale(light->max_distance, light->max_distance, light->max_distance);
 
 		//pass the model to the shader to render the sphere
-		sh->setUniform("u_model", m);*/
-		/*
-		//first pass doesn't use blending
-		if (i != 0)
-		{
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_ONE, GL_ONE);
-			sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
-			sh->setUniform("u_emissive", false);
-		}
+		sh->setUniform("u_model", m);
 
 		//If shadows are enabled, pass the shadowmap
 		if (light->cast_shadows)
@@ -634,19 +657,18 @@ void Renderer::renderMultiPassQuad(Mesh* mesh, Shader* shader)
 		sh->setUniform("u_light_intensity", light->intensity);
 		sh->setUniform("u_shadow_bias", light->bias);
 
-		//glFrontFace(GL_CW);
+		glFrontFace(GL_CW);
 
 		//render the mesh
-		quad->render(GL_TRIANGLES);
-		//sphere->render(GL_TRIANGLES);
-		renderMultiPass(quad, NULL, sh);
-	}*/
+		sphere->render(GL_TRIANGLES);
+	}
 
-	//sh->disable();
+	sh->disable();
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
+	glFrontFace(GL_CCW);
 }
 
 void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
