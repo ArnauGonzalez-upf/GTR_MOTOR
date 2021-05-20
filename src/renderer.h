@@ -25,6 +25,12 @@ namespace GTR {
 		MULTI
 	};
 
+	enum eLightEq {
+		PHONG,
+		DIRECT_LAMB,
+		DIRECT_BURLEY
+	};
+
 	class Prefab;
 	class Material;
 	class RenderCall;
@@ -37,6 +43,7 @@ namespace GTR {
 
 		eRenderMode render_mode;
 		eLightMode light_mode;
+		eLightEq light_eq;
 		bool pcf;
 		bool depth_viewport;
 		int depth_light;

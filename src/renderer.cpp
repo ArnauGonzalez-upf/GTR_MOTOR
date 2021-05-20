@@ -20,6 +20,7 @@ Renderer::Renderer()
 {
 	render_mode = eRenderMode::FORWARD;
 	light_mode = eLightMode::MULTI;
+	light_eq = eLightEq::PHONG;
 	pcf = false;
 	depth_viewport = false;
 	depth_light = 0;
@@ -483,6 +484,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_color", material->color);
 	shader->setUniform("u_emissive", material->emissive_factor);
 	shader->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
+	shader->setUniform("u_light_eq", light_eq);
 
 	if (!texture)
 		texture = Texture::getWhiteTexture(); //a 1x1 white texture

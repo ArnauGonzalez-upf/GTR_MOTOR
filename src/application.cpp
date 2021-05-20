@@ -271,6 +271,10 @@ void Application::renderDebugGUI(void)
 	bool changed_light_mode = false;
 	changed_light_mode |= ImGui::Combo("Light Mode", (int*)&renderer->light_mode, "SINGLE\0MULTI", 2);
 
+	//Changing light_eq
+	bool changed_light_eq = false;
+	changed_light_eq |= ImGui::Combo("Light Equation", (int*)&renderer->light_eq, "PHONG\0DIRECT_LAMB\0DIRECT_BURLEY", 2);
+
 	//Enabling depth viewport
 	ImGui::Checkbox("Depth Viewport", &renderer->depth_viewport);
 	if (renderer->depth_viewport) //We have to convert it to char

@@ -273,7 +273,7 @@ void GTR::LightEntity::renderInMenu()
 		ImGui::Text("POINT LIGHT"); // Edit 3 floats representing a color
 	}
 	ImGui::ColorEdit4("Color", color.v); // Edit 4 floats representing a color + alpha
-	ImGui::SliderFloat("Intensity", &intensity, 0.0f, 10.0f);
+	ImGui::SliderFloat("Intensity", &intensity, 0.0f, 100.0f);
 	ImGui::SliderFloat("Bias", &bias, 0.0f, 0.1f);
 	ImGui::SliderFloat("Max distance", &max_distance, 0.0f, 20000.0f);
 #endif
