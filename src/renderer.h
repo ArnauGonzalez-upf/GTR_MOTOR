@@ -84,7 +84,7 @@ namespace GTR {
 
 		//different renders for the different light_modes
 		void renderMultiPass(Mesh* mesh, Material* material, Shader* shader);
-		void renderMultiPassQuad(Shader* sh, Camera* camera);
+		void renderMultiPassSphere(Shader* sh, Camera* camera);
 		void renderSinglePass(Shader* shader, Mesh* mesh);
 
 		//renderers

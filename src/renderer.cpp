@@ -30,6 +30,7 @@ Renderer::Renderer()
 
 	//create and FBO
 	illumination_fbo = new FBO();
+	show_gbuffers = false;
 }
 
 //renders all the prefab
@@ -65,17 +66,17 @@ void Renderer::getCallsFromNode(const Matrix44& prefab_model, GTR::Node* node, C
 void Renderer::updateLight(LightEntity* light, Camera* camera)
 {
 	Vector3 pos;
+	light->camera->lookAt(light->model.getTranslation(), light->model * Vector3(0, 0, 1), light->model.rotateVector(Vector3(0, 1, 0)));
 
 	switch (light->light_type)
 	{
 	case POINT: return; break;
 	case SPOT:
-		light->camera->lookAt(light->model.getTranslation(), light->model * Vector3(0, 0, 1), light->model.rotateVector(Vector3(0, 1, 0)));
 		light->camera->setPerspective(2 * light->cone_angle, Application::instance->window_width / (float)Application::instance->window_width, 0.1f, light->max_distance);
 		break;
 	case DIRECTIONAL:
-		pos = camera->eye - (light->model.rotateVector(Vector3(0, 0, 1)) * 1000);
-		light->camera->lookAt(pos, pos + light->model.rotateVector(Vector3(0, 0, 1)), light->model.rotateVector(Vector3(0, 1, 0)));
+		//pos = camera->eye - (light->model.rotateVector(Vector3(0, 0, 1)) * 1000);
+		//light->camera->lookAt(pos, pos + light->model.rotateVector(Vector3(0, 0, 1)), light->model.rotateVector(Vector3(0, 1, 0)));
 		light->camera->setOrthographic(-light->area_size, light->area_size, -light->area_size, light->area_size, 0.1f, light->max_distance);
 
 		//Texel in world units (assuming rectangular)
@@ -150,7 +151,6 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
 				if (light->light_type != POINT) {
 					shadow_count++;
-					//lights.push_back(light);
 				}
 				lights.push_back(light);
 			}
@@ -296,11 +296,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	//we need a shader specially for this task, lets call it "deferred"
 	Shader* sh = NULL;
-	if (light_mode == MULTI)
-		sh = Shader::Get("deferred_multi");
-	if (light_mode == SINGLE)
-		sh = Shader::Get("deferred_single");
-
+	sh = Shader::Get("deferred_multi");
 	sh->enable();
 
 	//pass the gbuffers to the shader
@@ -322,42 +318,59 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_emissive", true);
 	sh->setUniform("u_back", true);
 
-	sh->setUniform("u_scale", 1.0f);
-	sh->setUniform("u_average_lum", 0.5f);
-	sh->setUniform("u_lumwhite2", 1.0f);
+	sh->setUniform("u_scale", 3.0f);
+	sh->setUniform("u_average_lum", 1.f);
+	sh->setUniform("u_lumwhite2", 2.0f);
 	sh->setUniform("u_igamma", 2.2f);
 
 	quad->render(GL_TRIANGLES);
 
-	if (light_mode == MULTI) {
-		//renderMultiPass(quad, NULL, sh);
-		sh = Shader::Get("deferred_ws");
+	LightEntity* directional = lights.back();
+	lights.pop_back();
 
-		sh->enable();
+	//If shadows are enabled, pass the shadowmap
+	Texture* shadowmap = directional->shadow_fbo->depth_texture;
+	sh->setTexture("shadowmap", shadowmap, 8);
+	Matrix44 shadow_proj = directional->camera->viewprojection_matrix;
+	sh->setUniform("u_shadow_viewproj", shadow_proj);
+	sh->setUniform("u_pcf", pcf);
 
-		//pass the gbuffers to the shader
-		sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
-		sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
-		sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
-		sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 3);
-		sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	sh->setVector3("u_light_vector", directional->model.frontVector());
+	
+	//Passing the remaining uniforms
+	sh->setUniform("u_shadows", directional->cast_shadows);
+	sh->setVector3("u_light_position", directional->model.getTranslation());
+	sh->setVector3("u_light_color", directional->color);
+	sh->setUniform("u_light_maxdist", directional->max_distance);
+	sh->setUniform("u_light_type", (int)directional->light_type);
+	sh->setUniform("u_light_intensity", directional->intensity);
+	sh->setUniform("u_shadow_bias", directional->bias);
 
-		//pass the inverse projection of the camera to reconstruct world pos.
-		Matrix44 inv_vp = camera->viewprojection_matrix;
-		inv_vp.inverse();
-		sh->setUniform("u_inverse_viewprojection", inv_vp);
-		//pass the inverse window resolution, this may be useful
-		sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+	quad->render(GL_TRIANGLES);
 
-		sh->setUniform("u_scale", 2.0f);
-		sh->setUniform("u_average_lum", 1.5f);
-		sh->setUniform("u_lumwhite2", 2.0f);
-		sh->setUniform("u_igamma", 1.8f);
+	//renderMultiPass(quad, NULL, sh);
+	sh = Shader::Get("deferred_ws");
 
-		renderMultiPassQuad(sh, camera);
-	}
-	if (light_mode == SINGLE)
-		renderSinglePass(sh, quad);
+	sh->enable();
+
+	//pass the gbuffers to the shader
+	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
+	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
+	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+	sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 3);
+	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+
+	//pass the inverse projection of the camera to reconstruct world pos.
+	sh->setUniform("u_inverse_viewprojection", inv_vp);
+	//pass the inverse window resolution, this may be useful
+	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+	sh->setUniform("u_scale", 50.0f);
+	sh->setUniform("u_average_lum", 3.5f);
+	sh->setUniform("u_lumwhite2", 7.0f);
+	sh->setUniform("u_igamma", 2.2f);
+	
+	renderMultiPassSphere(sh, camera);
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
@@ -621,7 +634,7 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 	}
 }
 
-void Renderer::renderMultiPassQuad(Shader* sh, Camera* camera)
+void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 {
 	//first pass doesn't use blending)
 	glEnable(GL_BLEND);
@@ -630,6 +643,8 @@ void Renderer::renderMultiPassQuad(Shader* sh, Camera* camera)
 	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
 	sh->setUniform("u_emissive", false);
 	sh->setUniform("u_back", false);
+	sh->setUniform("u_light_eq", light_eq);
+	sh->setUniform("u_camera_position", camera->eye);
 
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false);
 
