@@ -65,7 +65,7 @@ bool readJSONBool(cJSON* obj, const char* name, bool default_value);
 
 //Bounding sphere
 Vector4 boundingSphere(Vector3 origin, Vector3 forward, float size, float angle);
-
+std::vector<Vector3> generateSpherePoints(int num, float radius, bool hemi);
 #endif
 
 

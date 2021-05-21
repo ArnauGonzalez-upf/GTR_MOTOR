@@ -15,6 +15,7 @@ gbuffers basic.vs gbuffers.fs
 deferred_multi quad.vs deferred_multi.fs
 deferred_single quad.vs deferred_single.fs
 deferred_ws basic.vs deferred_multi.fs
+ssao quad.vs ssao.fs
 
 \normal_functions
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -1239,4 +1240,98 @@ void main()
 		color = z;
 
 	FragColor = vec4(color);
+}
+
+\ssao.fs
+
+#version 330 core
+in vec2 v_uv;
+
+uniform mat4 u_inverse_viewprojection;
+uniform mat4 u_viewprojection;
+
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_normal_texture;
+
+uniform vec2 u_iRes;
+ 
+uniform vec3 u_points[1000];
+
+out vec4 FragColor;
+
+//from this github repo
+mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
+{
+    // get edge vectors of the pixel triangle
+    vec3 dp1 = dFdx( p );
+    vec3 dp2 = dFdy( p );
+    vec2 duv1 = dFdx( uv );
+    vec2 duv2 = dFdy( uv );
+    
+    // solve the linear system
+    vec3 dp2perp = cross( dp2, N );
+    vec3 dp1perp = cross( N, dp1 );
+    vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+ 
+    // construct a scale-invariant frame 
+    float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+    return mat3( T * invmax, B * invmax, N );
+}
+
+void main()
+{
+	//we want to center the sample in the center of the pixel
+	vec2 uv = v_uv + u_iRes * 0.5;
+
+	//read depth from depth buffer
+	float depth = texture( u_depth_texture, uv ).x;
+	vec3 normal = texture( u_normal_texture, uv ).xyz;
+
+	//ignore pixels in the background
+	if(depth >= 1.0)
+	{
+   		FragColor = vec4(1.0);
+    		return;
+	}
+
+	//create screenpos with the right depth
+	vec4 screen_position = vec4(uv*2.0 - vec2(1.0), depth*2.0 - 1.0,1.0);
+
+	//reproject
+	vec4 proj_worldpos = u_inverse_viewprojection * screen_position;
+	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+
+	//lets use 64 samples
+	const int samples = 1000;
+	int num = samples; //num samples that passed the are outside
+
+	//to create the matrix33 to convert from tangent to world
+	mat3 rotmat = cotangent_frame( normal, worldpos, uv );
+
+	//for every sample around the point
+	for( int i = 0; i < samples; ++i )
+	{
+		vec3 rotated_point = rotmat * u_points[i];
+
+   		//compute is world position using the random
+    		vec3 p = worldpos + rotated_point * 10.0;
+
+    		//find the uv in the depth buffer of this point
+    		vec4 proj = u_viewprojection * vec4(p,1.0);
+    		proj.xy /= proj.w; //convert to clipspace from homogeneous
+    		//apply a tiny bias to its z before converting to clip-space
+    		proj.z = (proj.z - 0.005) / proj.w;
+    		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+    		//read p true depth
+    		float pdepth = texture( u_depth_texture, proj.xy ).x;
+    		//compare true depth with its depth
+    		if( pdepth < proj.z ) //if true depth smaller, is inside
+        		num--; //remove this point from the list of visible
+	}
+
+	//finally, compute the AO factor as the ratio of visible points
+	float ao = float(num) / float(samples);
+
+	FragColor = vec4(ao);
 }

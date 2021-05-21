@@ -35,6 +35,17 @@ namespace GTR {
 	class Material;
 	class RenderCall;
 
+	class SSAO
+	{
+	public:
+		float intensity;
+		FBO* ssao_fbo;
+		std::vector<Vector3> points;
+
+		SSAO();
+		Texture* apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera, bool& gen_points);
+	};
+
 	class Renderer
 	{
 
@@ -48,6 +59,7 @@ namespace GTR {
 		bool depth_viewport;
 		int depth_light;
 		int shadow_count; //counter for shadows.
+		bool gen_points;
 
 		Renderer();
 
@@ -58,6 +70,7 @@ namespace GTR {
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 		bool show_gbuffers;
+		SSAO* ssao;
 
 		//update the light viewproj matrix and parameters
 		void updateLight(LightEntity* light, Camera* camera);

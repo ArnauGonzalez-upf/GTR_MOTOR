@@ -31,6 +31,7 @@ Renderer::Renderer()
 	//create and FBO
 	illumination_fbo = new FBO();
 	show_gbuffers = false;
+	ao_buffer = new Texture(Application::instance->window_width, Application::instance->window_height, GL_LUMINANCE, GL_UNSIGNED_BYTE);
 
 	gen_points = true;
 	ssao = new SSAO();
@@ -294,7 +295,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera, gen_points);
+	ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera, gen_points, ao_buffer);
 
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
@@ -385,7 +386,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		showGbuffers(gbuffers_fbo, camera);
 	}
 
-	ao->toViewport();
+	ao_buffer->toViewport();
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -939,22 +940,32 @@ SSAO::SSAO()
 	ssao_fbo = new FBO();
 	ssao_fbo->create(Application::instance->window_width, Application::instance->window_height);
 
-	points = generateSpherePoints(1000, 1.0f, true);
+	points = generateSpherePoints(64, 1.0f, false);
 }
 
-Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera, bool& gen_points)
+void SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera, bool& gen_points, Texture* output)
 {
 	//bind the texture we want to change
 	depth_buffer->bind();
 	//disable using mipmaps
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	//enable bilinear filtering
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//glDisable(GL_BLEND);
+	//glDisable(GL_DEPTH_TEST);
+
+	//if (gen_points)
+	//{
+	//	points = generateSpherePoints(64, 1.0f, false);
+	//	gen_points = false;
+	//}
+
+	FBO* fbo = Texture::getGlobalFBO(output);
 
 	Mesh* quad = Mesh::getQuad();
 
 	//start rendering inside the ssao texture
-	ssao_fbo->bind();
+	fbo->bind();
 
 	//get the shader for SSAO (remember to create it using the atlas)
 	Shader* shader = Shader::Get("ssao");
@@ -964,8 +975,7 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	Matrix44 inv_vp = camera->viewprojection_matrix;
 	inv_vp.inverse();
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
-	shader->setUniform("u_normal_texture", normal_buffer, 1);
-	shader->setTexture("u_depth_texture", depth_buffer, 4);
+	shader->setTexture("u_depth_texture", depth_buffer, 0);
 	//we need the pixel size so we can center the samples 
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)depth_buffer->width,
 		1.0 / (float)depth_buffer->height));
@@ -980,7 +990,5 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	quad->render(GL_TRIANGLES);
 
 	//stop rendering to the texture
-	ssao_fbo->unbind();
-
-	return ssao_fbo->color_textures[0];
+	fbo->unbind();
 }
