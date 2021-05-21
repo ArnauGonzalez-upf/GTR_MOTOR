@@ -1247,6 +1247,10 @@ void main()
 #version 330 core
 in vec2 v_uv;
 
+uniform int u_samples;
+
+#define MAX_SAMPLES 512
+
 uniform mat4 u_inverse_viewprojection;
 uniform mat4 u_viewprojection;
 
@@ -1255,7 +1259,7 @@ uniform sampler2D u_normal_texture;
 
 uniform vec2 u_iRes;
  
-uniform vec3 u_points[1000];
+uniform vec3 u_points[MAX_SAMPLES];
 
 out vec4 FragColor;
 
@@ -1302,15 +1306,13 @@ void main()
 	vec4 proj_worldpos = u_inverse_viewprojection * screen_position;
 	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 
-	//lets use 64 samples
-	const int samples = 1000;
-	int num = samples; //num samples that passed the are outside
+	int num = u_samples; //num samples that passed the are outside
 
 	//to create the matrix33 to convert from tangent to world
 	mat3 rotmat = cotangent_frame( normal, worldpos, uv );
 
 	//for every sample around the point
-	for( int i = 0; i < samples; ++i )
+	for( int i = 0; i < u_samples; ++i )
 	{
 		vec3 rotated_point = rotmat * u_points[i];
 
@@ -1331,7 +1333,7 @@ void main()
 	}
 
 	//finally, compute the AO factor as the ratio of visible points
-	float ao = float(num) / float(samples);
+	float ao = float(num) / float(u_samples);
 
 	FragColor = vec4(ao);
 }

@@ -32,7 +32,6 @@ Renderer::Renderer()
 	illumination_fbo = new FBO();
 	show_gbuffers = false;
 
-	gen_points = true;
 	ssao = new SSAO();
 }
 
@@ -294,7 +293,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera, gen_points);
+	Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
 
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
@@ -935,14 +934,16 @@ Texture* GTR::CubemapFromHDRE(const char* filename)
 SSAO::SSAO()
 {
 	intensity = 1.0;
+	samples = 64;
+	half_sphere = true;
 
 	ssao_fbo = new FBO();
 	ssao_fbo->create(Application::instance->window_width, Application::instance->window_height);
 
-	points = generateSpherePoints(1000, 1.0f, true);
+	points = generateSpherePoints(samples, 1.0f, half_sphere);
 }
 
-Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera, bool& gen_points)
+Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera)
 {
 	//bind the texture we want to change
 	depth_buffer->bind();
@@ -973,8 +974,8 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 
 	//send random points so we can fetch around
-	shader->setUniform3Array("u_points", (float*)&points[0],
-		points.size());
+	shader->setUniform3Array("u_points", (float*)&points[0],points.size());
+	shader->setUniform("u_samples", samples);
 
 	//render fullscreen quad
 	quad->render(GL_TRIANGLES);

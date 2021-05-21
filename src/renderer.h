@@ -38,12 +38,17 @@ namespace GTR {
 	class SSAO
 	{
 	public:
+
+		int samples;
 		float intensity;
+		bool half_sphere;
+
 		FBO* ssao_fbo;
+
 		std::vector<Vector3> points;
 
 		SSAO();
-		Texture* apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera, bool& gen_points);
+		Texture* apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera);
 	};
 
 	class Renderer
@@ -59,7 +64,6 @@ namespace GTR {
 		bool depth_viewport;
 		int depth_light;
 		int shadow_count; //counter for shadows.
-		bool gen_points;
 
 		Renderer();
 
