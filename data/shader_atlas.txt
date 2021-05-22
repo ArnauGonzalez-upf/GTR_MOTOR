@@ -16,6 +16,7 @@ deferred_multi quad.vs deferred_multi.fs
 deferred_single quad.vs deferred_single.fs
 deferred_ws basic.vs deferred_multi.fs
 ssao quad.vs ssao.fs
+ao quad.vs ao.fs
 
 \normal_functions
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -960,8 +961,13 @@ void main()
 		discard;
 
 	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
-	material_properties.b *= u_metallic; 
-	material_properties.g *= u_roughness; 
+	float metallic = material_properties.b;
+	float roughness = material_properties.g;
+	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
+	if (metallic == 1.0)
+		material_properties.b = u_metallic;
+	if (roughness == 1.0)
+		material_properties.g = u_roughness;
 
 	vec3 N = normalize(v_normal);
 	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
@@ -1302,4 +1308,22 @@ void main()
 	float ao = float(num) / float(u_samples);
 
 	FragColor = vec4(ao);
+}
+
+\ao.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_texture;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec2 uv = v_uv;
+	float color = texture( u_texture, v_uv ).r;
+
+	FragColor = vec4(color,color,color,1.0);
 }

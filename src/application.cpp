@@ -273,7 +273,7 @@ void Application::renderDebugGUI(void)
 
 	//Changing light_eq
 	bool changed_light_eq = false;
-	changed_light_eq |= ImGui::Combo("Light Equation", (int*)&renderer->light_eq, "PHONG\0DIRECT_LAMB\0DIRECT_BURLEY", 2);
+	changed_light_eq |= ImGui::Combo("Light Equation", (int*)&renderer->light_eq, "PHONG\0DIRECT_LAMB\0DIRECT_BURLEY", 3);
 
 	//Enabling depth viewport
 	ImGui::Checkbox("Depth Viewport", &renderer->depth_viewport);
@@ -287,6 +287,8 @@ void Application::renderDebugGUI(void)
 
 	//Enabling PCF
 	ImGui::Checkbox("PCF (for Multi Pass)", &renderer->pcf);
+	//Enabling SSAO
+	ImGui::Checkbox("SSAO (for Deferred)", &renderer->activate_ssao);
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::ColorEdit4("BG color", scene->background_color.v);
@@ -336,8 +338,8 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_F5: Shader::ReloadAll(); break;
 		case SDLK_1: if (renderer->lights.size() > 0) { renderer->depth_light = (renderer->depth_light + 1) % renderer->lights.size(); } break; //Changing the light selected for the depth viewport
 		case SDLK_F6: scene->clear(); scene->load(scene->filename.c_str()); selected_entity = NULL;  break;
-		case SDLK_2: renderer->show_gbuffers = (renderer->show_gbuffers + 1) % 2;
-		case SDLK_3: renderer->show_ao = !renderer->show_ao;
+		case SDLK_2: renderer->show_gbuffers = (renderer->show_gbuffers + 1) % 2; break;
+		case SDLK_3: renderer->show_ao = !renderer->show_ao; break;
 	}
 }
 

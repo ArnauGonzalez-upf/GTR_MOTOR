@@ -34,6 +34,7 @@ Renderer::Renderer()
 
 	ssao = new SSAO();
 	show_ao = false;
+	activate_ssao = false;
 }
 
 //renders all the prefab
@@ -234,7 +235,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
 								1,             //one textures
 								GL_RGB,         //four channels
-								GL_HALF_FLOAT, //1 byte
+								GL_HALF_FLOAT, //half float
 								false);        //add depth_texture)
 	}
 
@@ -294,7 +295,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
+	if (activate_ssao)
+		Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
 
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
@@ -384,8 +386,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	if (show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
 	}
-
-	ao->toViewport();
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -518,28 +518,25 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	if (!texture_norm)
 		texture_norm = Texture::getBlackTexture(); //a 1x1 white texture
 
-	if (texture)
-		shader->setUniform("u_texture", texture, 0);
-	if (texture_em)
-		shader->setUniform("u_texture_em", texture_em, 1);
-	if (texture_met_rough)
-		shader->setUniform("u_texture_metallic_roughness", texture_met_rough, 2);
-	if (texture_norm)
-		shader->setUniform("u_texture_normals", texture_norm, 3);
+	shader->setUniform("u_texture", texture, 0);
+	shader->setUniform("u_texture_em", texture_em, 1);
+	shader->setUniform("u_texture_metallic_roughness", texture_met_rough, 2);
+	shader->setUniform("u_texture_normals", texture_norm, 3);
 
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
 
-	if (render_mode == FORWARD && light_mode == MULTI) {
-
+	if (render_mode == FORWARD && light_mode == MULTI) 
+	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
 		{
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}
-		else {
+		else 
+		{
 			glDisable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 		}
@@ -549,9 +546,11 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			shader->setUniform("u_light_type", (int)NO_LIGHT); 
 			mesh->render(GL_TRIANGLES); 
 		}
-		else { renderMultiPass(mesh, material, shader); }
+		else 
+			renderMultiPass(mesh, material, shader);
 	}
-	else if (render_mode == FORWARD && light_mode == SINGLE) {
+	else if (render_mode == FORWARD && light_mode == SINGLE) 
+	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
 		{
@@ -560,7 +559,8 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		}
 		renderSinglePass(shader, mesh);
 	}
-	else { mesh->render(GL_TRIANGLES); }
+	else 
+		mesh->render(GL_TRIANGLES);
 
 	//disable shader
 	shader->disable();
@@ -903,14 +903,24 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 	gbuffers_fbo->color_textures[1]->toViewport();
 
 	glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-	gbuffers_fbo->color_textures[2]->toViewport();
+	if (show_ao)
+	{
+		if (activate_ssao)
+			ssao->ssao_fbo->color_textures[0]->toViewport();
+		else
+		{
+			Shader* ao_shader = Shader::Get("ao");
+			gbuffers_fbo->color_textures[2]->toViewport(ao_shader);
+		}
+	}
+	else 
+		gbuffers_fbo->color_textures[2]->toViewport();
 
 	glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 	Shader* depth_shader = Shader::Get("depth");
 	depth_shader->enable();
 	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
 	gbuffers_fbo->depth_texture->toViewport(depth_shader);
-	depth_shader->disable();
 }
 
 
