@@ -33,6 +33,7 @@ Renderer::Renderer()
 	show_gbuffers = false;
 
 	ssao = new SSAO();
+	show_ao = false;
 }
 
 //renders all the prefab
@@ -507,16 +508,10 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 
 	if (!texture)
 		texture = Texture::getWhiteTexture(); //a 1x1 white texture
-	if (!texture_met_rough) {
+	if (!texture_met_rough)
 		texture_met_rough = Texture::getWhiteTexture(); //a 1x1 white texture
-		shader->setUniform("u_metallic", 0.0f);
-		shader->setUniform("u_roughness", 0.0f);
-	}
-	else
-	{ 
-		shader->setUniform("u_metallic", material->metallic_factor);
-		shader->setUniform("u_roughness", material->roughness_factor);
-	}
+	shader->setUniform("u_metallic", material->metallic_factor);
+	shader->setUniform("u_roughness", material->roughness_factor);
 
 	if (!texture_em)
 		texture_em = Texture::getWhiteTexture(); //a 1x1 white texture

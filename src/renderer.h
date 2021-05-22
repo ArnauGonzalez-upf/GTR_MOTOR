@@ -60,8 +60,12 @@ namespace GTR {
 		eRenderMode render_mode;
 		eLightMode light_mode;
 		eLightEq light_eq;
+
 		bool pcf;
 		bool depth_viewport;
+		bool show_gbuffers;
+		bool show_ao;
+
 		int depth_light;
 		int shadow_count; //counter for shadows.
 
@@ -73,7 +77,6 @@ namespace GTR {
 		FBO* atlas;
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
-		bool show_gbuffers;
 		SSAO* ssao;
 
 		//update the light viewproj matrix and parameters

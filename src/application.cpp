@@ -337,6 +337,7 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_1: if (renderer->lights.size() > 0) { renderer->depth_light = (renderer->depth_light + 1) % renderer->lights.size(); } break; //Changing the light selected for the depth viewport
 		case SDLK_F6: scene->clear(); scene->load(scene->filename.c_str()); selected_entity = NULL;  break;
 		case SDLK_2: renderer->show_gbuffers = (renderer->show_gbuffers + 1) % 2;
+		case SDLK_3: renderer->show_ao = !renderer->show_ao;
 	}
 }
 
