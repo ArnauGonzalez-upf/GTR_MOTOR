@@ -294,9 +294,10 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
-
+	
+	Texture* ao;
 	if (activate_ssao)
-		Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
+		ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
 
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
@@ -330,6 +331,11 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_lumwhite2", 2.0f);
 	sh->setUniform("u_igamma", 2.2f);
 
+	if (activate_ssao) {
+		sh->setUniform("u_ao_texture", ao, 5);
+		sh->setUniform("u_ao", true);
+	}
+	
 	quad->render(GL_TRIANGLES);
 
 	LightEntity* directional = lights.back();
@@ -352,6 +358,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_light_type", (int)directional->light_type);
 	sh->setUniform("u_light_intensity", directional->intensity);
 	sh->setUniform("u_shadow_bias", directional->bias);
+	sh->setUniform("u_ao", false);
 
 	quad->render(GL_TRIANGLES);
 
@@ -376,6 +383,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_average_lum", 3.5f);
 	sh->setUniform("u_lumwhite2", 7.0f);
 	sh->setUniform("u_igamma", 2.2f);
+
+	sh->setUniform("u_ao", false);
 	
 	renderMultiPassSphere(sh, camera);
 
