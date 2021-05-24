@@ -46,6 +46,7 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 	mouse_locked = false;
 
 	quality = MEDIUM;
+	change_res = false;
 
 	//loads and compiles several shaders from one single file
     //change to "data/shader_atlas_osx.txt" if you are in XCODE
@@ -250,6 +251,9 @@ void Application::renderDebugGUI(void)
 	bool changed_quality = false;
 	changed_quality |= ImGui::Combo("Quality Settings", (int*)&quality, "LOW\0MEDUIM\0HIGH\0ULTRA", 4);
 	if (changed_quality) {
+		if (renderer->render_mode == GTR::DEFERRED)
+			renderer->lights.push_back(renderer->directional_light);
+
 		for (int i = 0; i < renderer->lights.size(); ++i)
 		{
 			renderer->lights[i]->shadow_fbo->~FBO();
@@ -257,6 +261,7 @@ void Application::renderDebugGUI(void)
 			int res = 1024 * pow(2, (int)quality);
 			renderer->lights[i]->shadow_fbo->setDepthOnly(res, res);
 		}
+
 		if (renderer->atlas) {
 			renderer->atlas->~FBO();
 			renderer->atlas = NULL;
@@ -266,10 +271,25 @@ void Application::renderDebugGUI(void)
 	//Chaning render_mode
 	bool changed_render_mode = false;
 	changed_render_mode |= ImGui::Combo("Render Mode", (int*)&renderer->render_mode, "FORWARD\0SHOW_TEXTURE\0SHOW_UVS\0SHOW_NORMALS\0SHOW_OCCLUSION\0SHOW_EMISSIVE\0DEFERRED", 7);
+	if (changed_render_mode) {
+		if (renderer->render_mode == GTR::DEFERRED)
+			renderer->light_mode = GTR::MULTI;
+	}
 
-	//Changing light_mode
-	bool changed_light_mode = false;
-	changed_light_mode |= ImGui::Combo("Light Mode", (int*)&renderer->light_mode, "SINGLE\0MULTI", 2);
+	if (renderer->render_mode == GTR::FORWARD)
+	{
+		//Changing light_mode
+		bool changed_light_mode = false;
+		changed_light_mode |= ImGui::Combo("Light Mode", (int*)&renderer->light_mode, "SINGLE\0MULTI", 2);
+		if (changed_light_mode)
+		{
+			if (renderer->light_mode == GTR::MULTI || renderer->atlas)
+			{
+				renderer->atlas->~FBO();
+				renderer->atlas = NULL;
+			}
+		}
+	}
 
 	//Changing light_eq
 	bool changed_light_eq = false;
@@ -287,8 +307,10 @@ void Application::renderDebugGUI(void)
 
 	//Enabling PCF
 	ImGui::Checkbox("PCF (for Multi Pass)", &renderer->pcf);
+
 	//Enabling SSAO
-	ImGui::Checkbox("SSAO (for Deferred)", &renderer->activate_ssao);
+	if (renderer->render_mode == GTR::DEFERRED)
+		ImGui::Checkbox("SSAO", &renderer->activate_ssao);
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::ColorEdit4("BG color", scene->background_color.v);
@@ -407,5 +429,6 @@ void Application::onResize(int width, int height)
 	camera->aspect =  width / (float)height;
 	window_width = width;
 	window_height = height;
+	change_res == true;
 }
 

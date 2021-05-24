@@ -37,6 +37,7 @@ public:
 	bool render_gui;
 
 	eQualityType quality;
+	bool change_res;
 
 	//some vars
 	bool mouse_locked; //tells if the mouse is locked (blocked in the center and not visible)

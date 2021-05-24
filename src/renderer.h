@@ -74,6 +74,7 @@ namespace GTR {
 
 		std::vector<RenderCall> calls;
 		std::vector<LightEntity*> lights;
+		LightEntity* directional_light;
 
 		FBO* atlas;
 		FBO* gbuffers_fbo;

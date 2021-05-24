@@ -569,11 +569,13 @@ void main()
 	color *= baseColor;
 	float metallic = texture(u_texture_metallic_roughness, v_uv).b;	 //metallic
 	float roughness = texture(u_texture_metallic_roughness, v_uv).g; //roughness
+
 	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
 	if (metallic == 1.0)
 		metallic = u_metallic;
 	if (roughness == 1.0)
 		roughness = u_roughness;
+
 	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	emissive *= texture( u_texture_em, v_uv );
 	vec3 normal_pixel = texture2D( u_texture_normals, v_uv ).xyz;
@@ -901,6 +903,8 @@ in vec3 v_world_position;
 in vec3 v_normal;
 in vec2 v_uv;
 
+uniform mat4 u_viewmatrix;
+
 uniform vec4 u_color;
 uniform vec3 u_emissive;
 
@@ -916,7 +920,6 @@ uniform sampler2D u_texture_normals;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalColor;
 layout(location = 2) out vec4 ExtraColor;
-layout(location = 3) out vec4 EmissiveColor;
 
 #include "normal_functions"
 float dither4x4(vec2 position, float brightness)
@@ -961,8 +964,9 @@ void main()
 		discard;
 
 	vec4 material_properties =  texture( u_texture_metallic_roughness, v_uv );
-	float metallic = material_properties.b;
-	float roughness = material_properties.g;
+	float metallic = material_properties.b * u_metallic;
+	float roughness = material_properties.g * u_roughness;
+
 	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
 	if (metallic == 1.0)
 		material_properties.b = u_metallic;
@@ -978,10 +982,9 @@ void main()
 		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
 	}
 
-	FragColor = color;
-	NormalColor = vec4(N * 0.5 + vec3(0.5), 1.0);
-	ExtraColor = material_properties;
-	EmissiveColor = emissive;
+	FragColor = vec4(color.xyz, roughness);
+	NormalColor = vec4(N * 0.5 + vec3(0.5), material_properties.r);
+	ExtraColor = vec4(emissive.xyz, metallic);
 }
 
 \deferred_multi.fs
@@ -992,11 +995,12 @@ uniform sampler2D u_color_texture;
 uniform sampler2D u_normal_texture;
 uniform sampler2D u_extra_texture;
 uniform sampler2D u_depth_texture;
-uniform sampler2D u_emissive_texture;
 uniform sampler2D shadowmap;
 uniform sampler2D u_texture_normals;
+uniform sampler2D u_ao_texture;
 
 uniform mat4 u_inverse_viewprojection;
+uniform mat4 u_inv_viewmatrix;
 uniform vec2 u_iRes;
 
 in vec3 v_world_position;
@@ -1015,6 +1019,7 @@ uniform vec4 u_color;
 uniform int u_light_eq;
 uniform int u_light_type;
 uniform bool u_emissive;
+uniform bool u_ao;
 
 uniform float u_light_cutoff;
 uniform float u_light_maxdist;
@@ -1043,7 +1048,11 @@ void main()
 {
 	//extract uvs from pixel screenpos
     	vec2 uv = gl_FragCoord.xy * u_iRes.xy;  
-    	vec3 color = texture( u_color_texture, uv ).xyz;
+    	vec4 colorbuffer = texture( u_color_texture, uv );
+	vec4 normalbuffer = texture( u_normal_texture, uv );
+	vec4 extrabuffer = texture( u_extra_texture, uv );
+
+	vec3 color = colorbuffer.xyz;
 
     	//normals must be converted from 0..1 to -1..+1
     	vec3 N = texture( u_normal_texture, uv ).xyz * 2.0 - vec3(1.0);
@@ -1064,12 +1073,18 @@ void main()
 	
 	vec4 emissive;
 	if (u_emissive)
-		emissive = texture( u_emissive_texture, uv );
-
-	float occlusion =  texture( u_extra_texture, uv ).x;
-	float metallic =  texture( u_extra_texture, uv ).b;
-	float roughness =  texture( u_extra_texture, uv ).g;
+		emissive = texture( u_extra_texture, uv );
 	
+	float occlusion;
+	if (u_ao == true) 
+	{  
+	occlusion =  texture( u_ao_texture, uv ).r; 
+	occlusion =  pow(occlusion,1.0);
+	}
+	else { occlusion = normalbuffer.a; }
+
+	float metallic =  extrabuffer.a;
+	float roughness =  colorbuffer.a;
 
 	//other useful vectors
 	vec3 L;
@@ -1284,24 +1299,27 @@ void main()
 	mat3 rotmat = cotangent_frame( normal, worldpos, uv );
 
 	//for every sample around the point
-	for( int i = 0; i < u_samples; ++i )
+	for (int i = 0; i < MAX_SAMPLES; ++i)
 	{
-		vec3 rotated_point = rotmat * u_points[i];
+		if (i < u_samples)
+		{
+			vec3 rotated_point = rotmat * u_points[i];
 
-   		//compute is world position using the random
-    		vec3 p = worldpos + rotated_point * 10.0;
+   			//compute is world position using the random
+    			vec3 p = worldpos + rotated_point * 10.0;
 
-    		//find the uv in the depth buffer of this point
-    		vec4 proj = u_viewprojection * vec4(p,1.0);
-    		proj.xy /= proj.w; //convert to clipspace from homogeneous
-    		//apply a tiny bias to its z before converting to clip-space
-    		proj.z = (proj.z - 0.005) / proj.w;
-    		proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
-    		//read p true depth
-    		float pdepth = texture( u_depth_texture, proj.xy ).x;
-    		//compare true depth with its depth
-    		if( pdepth < proj.z ) //if true depth smaller, is inside
-        		num--; //remove this point from the list of visible
+    			//find the uv in the depth buffer of this point
+    			vec4 proj = u_viewprojection * vec4(p,1.0);
+    			proj.xy /= proj.w; //convert to clipspace from homogeneous
+    			//apply a tiny bias to its z before converting to clip-space
+    			proj.z = (proj.z - 0.005) / proj.w;
+    			proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
+    			//read p true depth
+    			float pdepth = texture( u_depth_texture, proj.xy ).x;
+    			//compare true depth with its depth
+    			if( pdepth < proj.z ) //if true depth smaller, is inside
+        			num--; //remove this point from the list of visible
+		}
 	}
 
 	//finally, compute the AO factor as the ratio of visible points

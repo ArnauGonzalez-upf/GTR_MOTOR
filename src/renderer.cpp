@@ -98,7 +98,6 @@ void Renderer::updateLight(LightEntity* light, Camera* camera)
 
 void Renderer::shadowMapping(LightEntity* light, Camera* camera)
 {
-
 	updateLight(light, camera);
 
 	//Bind to render inside a texture
@@ -128,6 +127,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	lights.clear(); //Clearing lights vector
 	calls.clear(); //Cleaning rendercalls vector
+	directional_light = NULL;
 	shadow_count = 0; //resetting counter of shadows
 
 	// Clear the color and the depth buffer
@@ -152,7 +152,14 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
 
-			if (light->light_type == DIRECTIONAL || light->lightBounding(camera)) {
+			if (light->light_type == DIRECTIONAL)
+			{
+				if (render_mode == DEFERRED) { directional_light = light; }
+				else { lights.push_back(light); }
+				shadow_count++;
+			}
+			else if (light->lightBounding(camera)) 
+			{
 				if (light->light_type != POINT) {
 					shadow_count++;
 				}
@@ -173,12 +180,20 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 			if (light->cast_shadows)
 				shadowMapping(light, camera);
 		}
+
+		if (render_mode == DEFERRED)
+		{
+			if (directional_light && directional_light->cast_shadows)
+				shadowMapping(directional_light, camera);
+		}
 	}
 	else if (light_mode == SINGLE)
 		renderToAtlas(camera);
 
 	if (render_mode == FORWARD)
+	{
 		renderForward(calls, camera);
+	}
 	if (render_mode == DEFERRED)
 		renderDeferred(calls, camera);
 
@@ -236,9 +251,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 								1,             //one textures
 								GL_RGB,         //four channels
 								GL_HALF_FLOAT, //half float
-								false);        //add depth_texture)
+								true);        //add depth_texture)
 	}
-
 
 	//start rendering inside the gbuffers
 	gbuffers_fbo->bind();
@@ -286,20 +300,32 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
-	//start rendering inside the gbuffers
-	//illumination_fbo->bind();
-	
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	if (activate_ssao)
-		Texture* ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
-
 	//we need a fullscreen quad
 	Mesh* quad = Mesh::getQuad();
+
+	//bind the texture we want to change
+	gbuffers_fbo->depth_texture->bind();
+
+	//disable using mipmaps
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	//enable bilinear filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	gbuffers_fbo->depth_texture->unbind();
+
+	Texture* ao = NULL;
+	if (activate_ssao)
+		ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
+
+	//start rendering inside the gbuffers
+	illumination_fbo->bind();
 
 	//we need a shader specially for this task, lets call it "deferred"
 	Shader* sh = NULL;
@@ -310,8 +336,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
 	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
 	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
-	sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 3);
 	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	if (activate_ssao)
+		sh->setUniform("u_ao_texture", ao, 5);
 
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
@@ -324,36 +351,38 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 	sh->setUniform("u_emissive", true);
 	sh->setUniform("u_back", true);
+	sh->setUniform("u_light_eq", light_eq);
+	sh->setUniform("u_camera_position", camera->eye);
 
 	sh->setUniform("u_scale", 3.0f);
 	sh->setUniform("u_average_lum", 1.f);
 	sh->setUniform("u_lumwhite2", 2.0f);
 	sh->setUniform("u_igamma", 2.2f);
+	sh->setUniform("u_ao", activate_ssao);
+			
+	if (directional_light) {
+		//If shadows are enabled, pass the shadowmap
+		Texture* shadowmap = directional_light->shadow_fbo->depth_texture;
+		sh->setTexture("shadowmap", shadowmap, 8);
+		Matrix44 shadow_proj = directional_light->camera->viewprojection_matrix;
+		sh->setUniform("u_shadow_viewproj", shadow_proj);
+		sh->setUniform("u_pcf", pcf);
+
+		sh->setVector3("u_light_vector", directional_light->model.frontVector());
+
+		//Passing the remaining uniforms
+		sh->setUniform("u_shadows", directional_light->cast_shadows);
+		sh->setVector3("u_light_position", directional_light->model.getTranslation());
+		sh->setVector3("u_light_color", directional_light->color);
+		sh->setUniform("u_light_maxdist", directional_light->max_distance);
+		sh->setUniform("u_light_type", (int)directional_light->light_type);
+		sh->setUniform("u_light_intensity", directional_light->intensity);
+		sh->setUniform("u_shadow_bias", directional_light->bias);
+	}
 
 	quad->render(GL_TRIANGLES);
 
-	LightEntity* directional = lights.back();
-	lights.pop_back();
-
-	//If shadows are enabled, pass the shadowmap
-	Texture* shadowmap = directional->shadow_fbo->depth_texture;
-	sh->setTexture("shadowmap", shadowmap, 8);
-	Matrix44 shadow_proj = directional->camera->viewprojection_matrix;
-	sh->setUniform("u_shadow_viewproj", shadow_proj);
-	sh->setUniform("u_pcf", pcf);
-
-	sh->setVector3("u_light_vector", directional->model.frontVector());
-	
-	//Passing the remaining uniforms
-	sh->setUniform("u_shadows", directional->cast_shadows);
-	sh->setVector3("u_light_position", directional->model.getTranslation());
-	sh->setVector3("u_light_color", directional->color);
-	sh->setUniform("u_light_maxdist", directional->max_distance);
-	sh->setUniform("u_light_type", (int)directional->light_type);
-	sh->setUniform("u_light_intensity", directional->intensity);
-	sh->setUniform("u_shadow_bias", directional->bias);
-
-	quad->render(GL_TRIANGLES);
+	sh->disable();
 
 	//renderMultiPass(quad, NULL, sh);
 	sh = Shader::Get("deferred_ws");
@@ -376,8 +405,11 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_average_lum", 3.5f);
 	sh->setUniform("u_lumwhite2", 7.0f);
 	sh->setUniform("u_igamma", 2.2f);
-	
+	sh->setUniform("u_ao", false);
+
 	renderMultiPassSphere(sh, camera);
+
+	sh->disable();
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
@@ -386,6 +418,14 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	if (show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
 	}
+
+	illumination_fbo->unbind();
+
+	//be sure blending is not active
+	glDisable(GL_BLEND);
+
+	//and render the texture into the screen
+	illumination_fbo->color_textures[0]->toViewport();
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -500,6 +540,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	//upload uniforms
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_viewmatrix", camera->view_matrix);
 	shader->setUniform("u_model", model);
 	shader->setUniform("u_color", material->color);
 	shader->setUniform("u_emissive", material->emissive_factor);
@@ -595,7 +636,6 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 			if (render_mode == DEFERRED) { shader->setUniform("u_emissive", false); glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE); }
 			else { shader->setUniform("u_emissive", Vector3(0, 0, 0)); }
 		}
-
 		//If shadows are enabled, pass the shadowmap
 		if (light->cast_shadows)
 		{
@@ -697,8 +737,6 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 		//render the mesh
 		sphere->render(GL_TRIANGLES);
 	}
-
-	sh->disable();
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
@@ -939,24 +977,17 @@ Texture* GTR::CubemapFromHDRE(const char* filename)
 SSAO::SSAO()
 {
 	intensity = 1.0;
-	samples = 64;
+	samples = 500;
 	half_sphere = true;
 
-	ssao_fbo = new FBO();
-	ssao_fbo->create(Application::instance->window_width, Application::instance->window_height);
+	Texture* ssao_texture = new Texture(Application::instance->window_width * 0.5, Application::instance->window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+	ssao_fbo = Texture::getGlobalFBO(ssao_texture);
 
 	points = generateSpherePoints(samples, 1.0f, half_sphere);
 }
 
 Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera)
 {
-	//bind the texture we want to change
-	depth_buffer->bind();
-	//disable using mipmaps
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	//enable bilinear filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
 	Mesh* quad = Mesh::getQuad();
 
 	//start rendering inside the ssao texture
