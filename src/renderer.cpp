@@ -254,9 +254,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	if (illumination_fbo->fbo_id == 0) {
 		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
-								1,             //one textures
-								GL_RGB,         //four channels
-								GL_HALF_FLOAT, //half float
+								1,            //one textures
+								GL_RGB,       //four channels
+								GL_FLOAT,	  // float
 								true);        //add depth_texture)
 	}
 
@@ -344,7 +344,10 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
 	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
 	if (activate_ssao)
+	{
 		sh->setUniform("u_ao_texture", ao, 5);
+		sh->setUniform("u_ao_factor", ssao->intensity);
+	}
 
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
@@ -410,12 +413,16 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
 	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
-
-	sh->setUniform("u_scale", 50.0f);
-	sh->setUniform("u_average_lum", 3.5f);
-	sh->setUniform("u_lumwhite2", 7.0f);
-	sh->setUniform("u_igamma", 2.2f);
 	sh->setUniform("u_ao", false);
+	sh->setUniform("u_hdr", hdr_active);
+
+	if (hdr_active)
+	{
+		sh->setUniform("u_scale", hdr_scale);
+		sh->setUniform("u_average_lum", hdr_average_lum);
+		sh->setUniform("u_lumwhite2", hdr_white_balance);
+		sh->setUniform("u_igamma", hdr_gamma);
+	}
 
 	renderMultiPassSphere(sh, camera);
 

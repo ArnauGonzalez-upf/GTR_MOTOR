@@ -1027,6 +1027,7 @@ uniform float u_light_intensity;
 uniform float u_light_exp;
 uniform float u_shadow_bias;
 uniform float u_alpha_cutoff;
+uniform float u_ao_factor;
 
 uniform bool u_pcf;
 uniform bool u_shadows;
@@ -1080,7 +1081,7 @@ void main()
 	if (u_ao == true) 
 	{  
 	occlusion =  texture( u_ao_texture, uv ).r; 
-	occlusion =  pow(occlusion,1.0);
+	occlusion =  pow(occlusion, u_ao_factor);
 	}
 	else { occlusion = normalbuffer.a; }
 
