@@ -35,6 +35,12 @@ Renderer::Renderer()
 	ssao = new SSAO();
 	show_ao = false;
 	activate_ssao = false;
+
+	hdr_active = false;
+	hdr_scale = 1.0;
+	hdr_average_lum = 5.0;
+	hdr_white_balance = 5.0;
+	hdr_gamma = 2.2;
 }
 
 //renders all the prefab
@@ -353,12 +359,16 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_back", true);
 	sh->setUniform("u_light_eq", light_eq);
 	sh->setUniform("u_camera_position", camera->eye);
-
-	sh->setUniform("u_scale", 3.0f);
-	sh->setUniform("u_average_lum", 1.f);
-	sh->setUniform("u_lumwhite2", 2.0f);
-	sh->setUniform("u_igamma", 2.2f);
 	sh->setUniform("u_ao", activate_ssao);
+	sh->setUniform("u_hdr", hdr_active);
+
+	if (hdr_active) 
+	{
+		sh->setUniform("u_scale", hdr_scale);
+		sh->setUniform("u_average_lum", hdr_average_lum);
+		sh->setUniform("u_lumwhite2", hdr_white_balance);
+		sh->setUniform("u_igamma", hdr_gamma);
+	}
 			
 	if (directional_light) {
 		//If shadows are enabled, pass the shadowmap

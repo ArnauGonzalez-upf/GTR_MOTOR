@@ -310,7 +310,18 @@ void Application::renderDebugGUI(void)
 
 	//Enabling SSAO
 	if (renderer->render_mode == GTR::DEFERRED)
+	{
 		ImGui::Checkbox("SSAO", &renderer->activate_ssao);
+		ImGui::Checkbox("HDR", &renderer->hdr_active);
+
+		if (renderer->hdr_active)
+		{
+			ImGui::SliderFloat("HDR scale", &renderer->hdr_scale, 0.1f, 5.0f);
+			ImGui::SliderFloat("HDR Average Luminance", &renderer->hdr_average_lum, 0.1f, 10.0f);
+			ImGui::SliderFloat("HDR White Balance", &renderer->hdr_white_balance, 0.1f, 10.0f);
+			ImGui::SliderFloat("HDR Gamma Correction", &renderer->hdr_gamma, 0.25f, 2.5f);
+		}
+	}
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
 	ImGui::ColorEdit4("BG color", scene->background_color.v);

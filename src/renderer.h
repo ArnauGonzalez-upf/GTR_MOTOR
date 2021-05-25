@@ -70,6 +70,12 @@ namespace GTR {
 		int depth_light;
 		int shadow_count; //counter for shadows.
 
+		bool hdr_active;
+		float hdr_scale;
+		float hdr_average_lum;
+		float hdr_white_balance;
+		float hdr_gamma;
+
 		Renderer();
 
 		std::vector<RenderCall> calls;
