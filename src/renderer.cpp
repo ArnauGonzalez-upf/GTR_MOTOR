@@ -133,7 +133,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	lights.clear(); //Clearing lights vector
 	calls.clear(); //Cleaning rendercalls vector
-	directional_light = NULL;
+	directional_light = nullptr;
 	shadow_count = 0; //resetting counter of shadows
 
 	// Clear the color and the depth buffer
@@ -173,6 +173,8 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 			}
 		}
 	}
+
+
 
 	//Sorting rendercalls
 	std::sort(calls.begin(), calls.end());
@@ -256,7 +258,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
 								1,            //one textures
 								GL_RGB,       //four channels
-								GL_FLOAT,	  // float
+								GL_HALF_FLOAT,//half float
 								true);        //add depth_texture)
 	}
 
@@ -416,14 +418,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_ao", false);
 	sh->setUniform("u_hdr", hdr_active);
 
-	if (hdr_active)
-	{
-		sh->setUniform("u_scale", hdr_scale);
-		sh->setUniform("u_average_lum", hdr_average_lum);
-		sh->setUniform("u_lumwhite2", hdr_white_balance);
-		sh->setUniform("u_igamma", hdr_gamma);
-	}
-
 	renderMultiPassSphere(sh, camera);
 
 	sh->disable();
@@ -442,7 +436,15 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_BLEND);
 
 	//and render the texture into the screen
-	illumination_fbo->color_textures[0]->toViewport();
+	Shader* hdr_shader = Shader::Get("hdr");
+
+	hdr_shader->enable();
+	hdr_shader->setUniform("u_scale", hdr_scale);
+	hdr_shader->setUniform("u_average_lum", hdr_average_lum);
+	hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
+	hdr_shader->setUniform("u_igamma", hdr_gamma);
+	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
