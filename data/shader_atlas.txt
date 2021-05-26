@@ -728,11 +728,6 @@ uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D shadowmap;
 
-uniform float u_scale;
-uniform float u_average_lum;
-uniform float u_lumwhite2;
-uniform float u_igamma;
-
 out vec4 FragColor;
 
 #include "normal_functions"
@@ -859,19 +854,6 @@ void main()
 	color.xyz += emissive.xyz;
 
 	FragColor = color;
-
-	/*vec3 rgb = color.xyz;
-
-	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-  	float L_HDR = (u_scale / u_average_lum) * lum;
-	float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
-
-    	rgb = (rgb / lum) * Ld;
-    	rgb = max(rgb,vec3(0.001));
-    	rgb = pow( rgb, vec3( u_igamma ) );
-
-	
-	FragColor = vec4(rgb, color.a);*/
 }
 
 \shadowmap.fs
@@ -912,6 +894,8 @@ uniform vec3 u_emissive;
 uniform float u_alpha_cutoff;
 uniform float u_metallic;
 uniform float u_roughness;
+
+uniform float u_gamma;
 
 uniform sampler2D u_texture;
 uniform sampler2D u_texture_em;
@@ -954,12 +938,14 @@ float dither4x4(vec2 position, float brightness)
 
 void main()
 {
-	vec4 color = u_color;
-	vec4 emissive = vec4( u_emissive, 1.0 );	
+	vec4 color = texture( u_texture, v_uv );
+	color.xyz = pow(color.xyz, vec3(u_gamma));
+	vec4 emissive = texture( u_texture_em, v_uv );
+	emissive = pow(emissive, vec4(u_gamma));
 
 	//Getting values from textures
-	color *= texture( u_texture, v_uv );
-	emissive *= texture( u_texture_em, v_uv );
+	color *= u_color;
+	emissive *= vec4( u_emissive, 1.0 );
 
 	if (color.a < 0.9 && dither4x4(gl_FragCoord.xy, color.a) == 0.0)
 		discard;
@@ -975,13 +961,13 @@ void main()
 		material_properties.g = u_roughness;
 
 	vec3 N = normalize(v_normal);
-	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
+	/*vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
 
 	//Perturbing the normal if there is a normalmap
 	if (normal_pixel != vec3(0,0,0))
 	{
 		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
-	}
+	}*/
 
 	FragColor = vec4(color.xyz, roughness);
 	NormalColor = vec4(N * 0.5 + vec3(0.5), material_properties.r);
@@ -1035,10 +1021,7 @@ uniform bool u_shadows;
 uniform bool u_back;
 uniform bool u_hdr;
 
-uniform float u_scale;
-uniform float u_average_lum;
-uniform float u_lumwhite2;
-uniform float u_igamma;
+uniform float u_gamma;
 
 //pass here all the uniforms required for illumination...
 layout(location = 0) out vec4 FragColor;
@@ -1074,9 +1057,11 @@ void main()
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 	
-	vec4 emissive;
+	vec3 emissive;
 	if (u_emissive)
-		emissive = texture( u_extra_texture, uv );
+	{
+		emissive = extrabuffer.xyz;
+	}
 	
 	float occlusion;
 	if (u_ao == true) 
@@ -1159,7 +1144,7 @@ void main()
 	float LdotH = max(dot(L,H),0.0);
 
 	//store the light parameters
-	vec3 light_params = NdotL * u_light_color * spot_factor * att_factor * shadow_factor * u_light_intensity;
+	vec3 light_params = NdotL * u_light_color /*pow(u_light_color,vec3(2.2))*/ * spot_factor * att_factor * shadow_factor * u_light_intensity;
 
 	if (u_light_eq == 0) 		// PHONG
 		light += light_params;
@@ -1172,7 +1157,7 @@ void main()
 
 	//Applying light to color
 	color.xyz *= light;
-	color.xyz += emissive.xyz;
+	color.xyz += emissive;
 
 	FragColor = vec4(color, 1.0);
 }
@@ -1267,7 +1252,7 @@ void main()
 
 	//read depth from depth buffer
 	float depth = texture( u_depth_texture, uv ).x;
-	vec3 normal = texture( u_normal_texture, uv ).xyz;
+	vec3 normal = texture( u_normal_texture, uv ).xyz * 2.0 - vec3(1.0);
 
 	//ignore pixels in the background
 	if(depth >= 1.0)

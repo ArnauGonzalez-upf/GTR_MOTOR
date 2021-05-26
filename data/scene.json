@@ -60,13 +60,13 @@
 			"position":[0,36,-16],
 			"angle": -45,
 			"color":[1,0.9,0.8],
-			"intensity":10,
+			"intensity":50,
 			"max_dist":1000,
 			"cone_angle":45,
 			"cone_exp":60,
 			"light_type":"SPOT",
 			"cast_shadows": true,
-			"shadow_bias": 0.001
+			"shadow_bias": 0.005
 		},
 		{
 			"name":"pointlight",
@@ -74,7 +74,7 @@
 			"position":[-187,38,-156],
 			"angle": 0,
 			"color":[1,0.2,0.1],
-			"intensity":2.5,
+			"intensity":12.5,
 			"max_dist":70,
 			"light_type":"POINT"
 		},
@@ -84,7 +84,7 @@
 			"position":[-131,38,-205],
 			"angle": 0,
 			"color":[1,0.2,0.1],
-			"intensity":2.5,
+			"intensity":12.5,
 			"max_dist":70,
 			"light_type":"POINT"
 		},
@@ -94,7 +94,7 @@
 			"position":[150,300,50],
 			"target":[-80,0,-50],
 			"color":[0.1,0.2,0.4],
-			"intensity":1.5,
+			"intensity":30.0,
 			"area_size":1500,
 			"max_dist":1000,
 			"cast_shadows": true,

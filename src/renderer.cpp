@@ -13,14 +13,15 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include "math.h"
 
 using namespace GTR;
 
 Renderer::Renderer()
 {
-	render_mode = eRenderMode::FORWARD;
+	render_mode = eRenderMode::DEFERRED;
 	light_mode = eLightMode::MULTI;
-	light_eq = eLightEq::PHONG;
+	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
 	depth_light = 0;
@@ -38,8 +39,8 @@ Renderer::Renderer()
 
 	hdr_active = false;
 	hdr_scale = 1.0;
-	hdr_average_lum = 5.0;
-	hdr_white_balance = 5.0;
+	hdr_average_lum = 0.75;
+	hdr_white_balance = 4.5;
 	hdr_gamma = 2.2;
 }
 
@@ -250,7 +251,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
 						4,             //four textures
 						GL_RGBA,         //four channels
-						GL_UNSIGNED_BYTE, //1 byte
+						GL_HALF_FLOAT, //1 byte
 						true);        //add depth_texture)
 	}
 
@@ -366,14 +367,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_camera_position", camera->eye);
 	sh->setUniform("u_ao", activate_ssao);
 	sh->setUniform("u_hdr", hdr_active);
-
-	if (hdr_active) 
-	{
-		sh->setUniform("u_scale", hdr_scale);
-		sh->setUniform("u_average_lum", hdr_average_lum);
-		sh->setUniform("u_lumwhite2", hdr_white_balance);
-		sh->setUniform("u_igamma", hdr_gamma);
-	}
+	sh->setUniform("u_gamma", hdr_gamma);
 			
 	if (directional_light) {
 		//If shadows are enabled, pass the shadowmap
@@ -388,7 +382,10 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		//Passing the remaining uniforms
 		sh->setUniform("u_shadows", directional_light->cast_shadows);
 		sh->setVector3("u_light_position", directional_light->model.getTranslation());
-		sh->setVector3("u_light_color", directional_light->color);
+
+		Vector3 color = Vector3(pow(directional_light->color.x, hdr_gamma), pow(directional_light->color.y, hdr_gamma), pow(directional_light->color.z, hdr_gamma));
+		sh->setVector3("u_light_color", color);
+
 		sh->setUniform("u_light_maxdist", directional_light->max_distance);
 		sh->setUniform("u_light_type", (int)directional_light->light_type);
 		sh->setUniform("u_light_intensity", directional_light->intensity);
@@ -426,10 +423,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
-	if (show_gbuffers) {
-		showGbuffers(gbuffers_fbo, camera);
-	}
-
 	illumination_fbo->unbind();
 
 	//be sure blending is not active
@@ -442,8 +435,15 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	hdr_shader->setUniform("u_scale", hdr_scale);
 	hdr_shader->setUniform("u_average_lum", hdr_average_lum);
 	hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
-	hdr_shader->setUniform("u_igamma", hdr_gamma);
-	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+	float inv_gamma = 1 / hdr_gamma;
+	hdr_shader->setUniform("u_igamma", inv_gamma);
+
+	if (show_gbuffers) {
+		showGbuffers(gbuffers_fbo, camera);
+	}
+	else {
+		illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+	}
 
 }
 
@@ -565,6 +565,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_emissive", material->emissive_factor);
 	shader->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
 	shader->setUniform("u_light_eq", light_eq);
+	shader->setUniform("u_gamma", hdr_gamma);
 
 	if (!texture)
 		texture = Texture::getWhiteTexture(); //a 1x1 white texture
@@ -635,11 +636,6 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 	//allow to render pixels that have the same depth as the one in the depth buffer
 	glDepthFunc(GL_LEQUAL);
 
-	shader->setUniform("u_scale", 3.0f);
-	shader->setUniform("u_average_lum", 1.f);
-	shader->setUniform("u_lumwhite2", 2.0f);
-	shader->setUniform("u_igamma", 1.5f);
-
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
@@ -683,7 +679,10 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 		//Passing the remaining uniforms
 		shader->setUniform("u_shadows", light->cast_shadows);
 		shader->setVector3("u_light_position", light->model.getTranslation());
-		shader->setVector3("u_light_color", light->color);
+
+		Vector3 color = Vector3(pow(light->color.x, hdr_gamma), pow(light->color.y, hdr_gamma), pow(light->color.z, hdr_gamma));
+		shader->setVector3("u_light_color", color);
+
 		shader->setUniform("u_light_maxdist", light->max_distance);
 		shader->setUniform("u_light_type", (int)light->light_type);
 		shader->setUniform("u_light_intensity", light->intensity);
@@ -745,7 +744,10 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 		//Passing the remaining uniforms
 		sh->setUniform("u_shadows", light->cast_shadows);
 		sh->setVector3("u_light_position", light->model.getTranslation());
-		sh->setVector3("u_light_color", light->color);
+		
+		Vector3 color = Vector3(pow(light->color.x, hdr_gamma), pow(light->color.y, hdr_gamma), pow(light->color.z, hdr_gamma));
+		sh->setVector3("u_light_color", color);
+
 		sh->setUniform("u_light_maxdist", light->max_distance);
 		sh->setUniform("u_light_type", (int)light->light_type);
 		sh->setUniform("u_light_intensity", light->intensity);
@@ -996,7 +998,7 @@ Texture* GTR::CubemapFromHDRE(const char* filename)
 SSAO::SSAO()
 {
 	intensity = 1.0;
-	samples = 500;
+	samples = 64;
 	half_sphere = true;
 
 	Texture* ssao_texture = new Texture(Application::instance->window_width * 0.5, Application::instance->window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);

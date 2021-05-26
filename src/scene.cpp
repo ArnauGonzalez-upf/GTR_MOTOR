@@ -192,7 +192,7 @@ void GTR::LightEntity::configure(cJSON* json)
 		}
 		if (type_str == "DIRECTIONAL") {
 			light_type = DIRECTIONAL;
-			bias = 0.001;
+			bias = 0.005;
 		}
 	}
 	if (cJSON_GetObjectItem(json, "color"))
