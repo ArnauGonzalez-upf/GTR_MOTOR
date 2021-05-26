@@ -81,6 +81,7 @@ namespace GTR {
 		virtual void renderInMenu();
 		virtual void configure(cJSON* json);
 		bool lightBounding(Camera* camera);
+		void uploadLightParams(Shader* sh, bool linearize, float& hdr_gamma);
 	};
 
 	//contains all entities of the scene

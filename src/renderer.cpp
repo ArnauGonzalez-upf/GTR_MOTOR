@@ -27,10 +27,9 @@ Renderer::Renderer()
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
+	illumination_fbo = new FBO();
 	atlas = NULL;
 
-	//create and FBO
-	illumination_fbo = new FBO();
 	show_gbuffers = false;
 
 	ssao = new SSAO();
@@ -39,8 +38,8 @@ Renderer::Renderer()
 
 	hdr_active = false;
 	hdr_scale = 1.0;
-	hdr_average_lum = 0.75;
-	hdr_white_balance = 4.5;
+	hdr_average_lum = 1.5;
+	hdr_white_balance = 0.5;
 	hdr_gamma = 2.2;
 }
 
@@ -174,8 +173,6 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 			}
 		}
 	}
-
-
 
 	//Sorting rendercalls
 	std::sort(calls.begin(), calls.end());
@@ -370,26 +367,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_gamma", hdr_gamma);
 			
 	if (directional_light) {
-		//If shadows are enabled, pass the shadowmap
-		Texture* shadowmap = directional_light->shadow_fbo->depth_texture;
-		sh->setTexture("shadowmap", shadowmap, 8);
-		Matrix44 shadow_proj = directional_light->camera->viewprojection_matrix;
-		sh->setUniform("u_shadow_viewproj", shadow_proj);
 		sh->setUniform("u_pcf", pcf);
-
-		sh->setVector3("u_light_vector", directional_light->model.frontVector());
-
-		//Passing the remaining uniforms
-		sh->setUniform("u_shadows", directional_light->cast_shadows);
-		sh->setVector3("u_light_position", directional_light->model.getTranslation());
-
-		Vector3 color = Vector3(pow(directional_light->color.x, hdr_gamma), pow(directional_light->color.y, hdr_gamma), pow(directional_light->color.z, hdr_gamma));
-		sh->setVector3("u_light_color", color);
-
-		sh->setUniform("u_light_maxdist", directional_light->max_distance);
-		sh->setUniform("u_light_type", (int)directional_light->light_type);
-		sh->setUniform("u_light_intensity", directional_light->intensity);
-		sh->setUniform("u_shadow_bias", directional_light->bias);
+		directional_light->uploadLightParams(sh, true, hdr_gamma);
 	}
 
 	quad->render(GL_TRIANGLES);
@@ -428,20 +407,20 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	//be sure blending is not active
 	glDisable(GL_BLEND);
 
-	//and render the texture into the screen
-	Shader* hdr_shader = Shader::Get("hdr");
-
-	hdr_shader->enable();
-	hdr_shader->setUniform("u_scale", hdr_scale);
-	hdr_shader->setUniform("u_average_lum", hdr_average_lum);
-	hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
-	float inv_gamma = 1 / hdr_gamma;
-	hdr_shader->setUniform("u_igamma", inv_gamma);
-
 	if (show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
 	}
 	else {
+		//and render the texture into the screen
+		Shader* hdr_shader = Shader::Get("hdr");
+
+		hdr_shader->enable();
+		hdr_shader->setUniform("u_scale", hdr_scale);
+		hdr_shader->setUniform("u_average_lum", hdr_average_lum);
+		hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
+		float inv_gamma = 1 / hdr_gamma;
+		hdr_shader->setUniform("u_igamma", inv_gamma);
+
 		illumination_fbo->color_textures[0]->toViewport(hdr_shader);
 	}
 
@@ -651,42 +630,8 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 			if (render_mode == DEFERRED) { shader->setUniform("u_emissive", false); glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE); }
 			else { shader->setUniform("u_emissive", Vector3(0, 0, 0)); }
 		}
-		//If shadows are enabled, pass the shadowmap
-		if (light->cast_shadows)
-		{
-			Texture* shadowmap = light->shadow_fbo->depth_texture;
-			shader->setTexture("shadowmap", shadowmap, 8);
-			Matrix44 shadow_proj = light->camera->viewprojection_matrix;
-			shader->setUniform("u_shadow_viewproj", shadow_proj);
-			shader->setUniform("u_pcf", pcf);
-		}
 
-		//Depending on the type there are other uniforms to pass
-		switch (light->light_type)
-		{
-			float cos_angle;
-		case SPOT:
-			cos_angle = cos(lights[i]->cone_angle * PI / 180);
-			shader->setUniform("u_light_cutoff", cos_angle);
-			shader->setVector3("u_light_vector", light->model.frontVector());
-			shader->setUniform("u_light_exp", light->spot_exp);
-			break;
-		case DIRECTIONAL:
-			shader->setVector3("u_light_vector", light->model.frontVector());
-			break;
-		}
-
-		//Passing the remaining uniforms
-		shader->setUniform("u_shadows", light->cast_shadows);
-		shader->setVector3("u_light_position", light->model.getTranslation());
-
-		Vector3 color = Vector3(pow(light->color.x, hdr_gamma), pow(light->color.y, hdr_gamma), pow(light->color.z, hdr_gamma));
-		shader->setVector3("u_light_color", color);
-
-		shader->setUniform("u_light_maxdist", light->max_distance);
-		shader->setUniform("u_light_type", (int)light->light_type);
-		shader->setUniform("u_light_intensity", light->intensity);
-		shader->setUniform("u_shadow_bias", light->bias);
+		light->uploadLightParams(shader, false, hdr_gamma);
 
 		//render the mesh
 		mesh->render(GL_TRIANGLES);
@@ -698,7 +643,9 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 	//first pass doesn't use blending)
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
+
 	glEnable(GL_CULL_FACE);
+
 	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
 	sh->setUniform("u_emissive", false);
 	sh->setUniform("u_back", false);
@@ -724,34 +671,7 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 		//pass the model to the shader to render the sphere
 		sh->setUniform("u_model", m);
 
-		//If shadows are enabled, pass the shadowmap
-		if (light->cast_shadows)
-		{
-			Texture* shadowmap = light->shadow_fbo->depth_texture;
-			sh->setTexture("shadowmap", shadowmap, 8);
-			Matrix44 shadow_proj = light->camera->viewprojection_matrix;
-			sh->setUniform("u_shadow_viewproj", shadow_proj);
-			sh->setUniform("u_pcf", pcf);
-		}
-
-		//Depending on the type there are other uniforms to pass
-
-		float cos_angle = cos(lights[i]->cone_angle * PI / 180);
-		sh->setUniform("u_light_cutoff", cos_angle);
-		sh->setVector3("u_light_vector", light->model.frontVector());
-		sh->setUniform("u_light_exp", light->spot_exp);
-
-		//Passing the remaining uniforms
-		sh->setUniform("u_shadows", light->cast_shadows);
-		sh->setVector3("u_light_position", light->model.getTranslation());
-		
-		Vector3 color = Vector3(pow(light->color.x, hdr_gamma), pow(light->color.y, hdr_gamma), pow(light->color.z, hdr_gamma));
-		sh->setVector3("u_light_color", color);
-
-		sh->setUniform("u_light_maxdist", light->max_distance);
-		sh->setUniform("u_light_type", (int)light->light_type);
-		sh->setUniform("u_light_intensity", light->intensity);
-		sh->setUniform("u_shadow_bias", light->bias);
+		light->uploadLightParams(sh, true, hdr_gamma);
 
 		glFrontFace(GL_CW);
 

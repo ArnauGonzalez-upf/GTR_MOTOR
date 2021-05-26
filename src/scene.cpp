@@ -1,6 +1,7 @@
 #include "scene.h"
 #include "utils.h"
 #include "application.h"
+#include "shader.h"
 
 #include "prefab.h"
 #include "extra/cJSON.h"
@@ -277,4 +278,32 @@ void GTR::LightEntity::renderInMenu()
 	ImGui::SliderFloat("Bias", &bias, 0.0f, 0.1f);
 	ImGui::SliderFloat("Max distance", &max_distance, 0.0f, 20000.0f);
 #endif
+}
+
+void GTR::LightEntity::uploadLightParams(Shader* sh, bool linearize, float& hdr_gamma)
+{
+	if (cast_shadows) {
+		//If shadows are enabled, pass the shadowmap
+		Texture* shadowmap = shadow_fbo->depth_texture;
+		sh->setTexture("shadowmap", shadowmap, 8);
+		Matrix44 shadow_proj = camera->viewprojection_matrix;
+		sh->setUniform("u_shadow_viewproj", shadow_proj);
+		sh->setUniform("u_shadow_bias", bias);
+	}
+
+	if (linearize) {
+		Vector3 l_color = Vector3(pow(color.x, hdr_gamma), pow(color.y, hdr_gamma), pow(color.z, hdr_gamma));
+		sh->setVector3("u_light_color", l_color);
+	}else{ sh->setVector3("u_light_color", color); }
+
+	float cos_angle = cos(cone_angle * PI / 180);
+	sh->setUniform("u_light_cutoff", cos_angle);
+	sh->setUniform("u_light_exp", spot_exp);
+
+	sh->setVector3("u_light_vector", model.frontVector());
+	sh->setUniform("u_shadows", cast_shadows);
+	sh->setVector3("u_light_position", model.getTranslation());
+	sh->setUniform("u_light_maxdist", max_distance);
+	sh->setUniform("u_light_type", (int)light_type);
+	sh->setUniform("u_light_intensity", intensity);
 }
