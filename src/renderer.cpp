@@ -133,7 +133,7 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	lights.clear(); //Clearing lights vector
 	calls.clear(); //Cleaning rendercalls vector
-	directional_light = nullptr;
+	directional_light = NULL;
 	shadow_count = 0; //resetting counter of shadows
 
 	// Clear the color and the depth buffer
@@ -196,12 +196,8 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	else if (light_mode == SINGLE)
 		renderToAtlas(camera);
 
-	if (render_mode == FORWARD)
-	{
-		renderForward(calls, camera);
-	}
-	if (render_mode == DEFERRED)
-		renderDeferred(calls, camera);
+	if (render_mode == FORWARD)	{ renderForward(calls, camera); }
+	else if (render_mode == DEFERRED) { renderDeferred(calls, camera); }
 
 	//If render_debug is active, draw the grid
 	if (Application::instance->render_debug)
@@ -264,7 +260,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	gbuffers_fbo->bind();
 
 	//we clear in several passes so we can control the clear color independently for every gbuffer
-
 	//disable all but the GB0 (and the depth)
 	gbuffers_fbo->enableSingleBuffer(0);
 
@@ -302,9 +297,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
-
-	glClearColor(0.0, 0.0, 0.0, 0.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
@@ -332,6 +324,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	//start rendering inside the gbuffers
 	illumination_fbo->bind();
+
+	glClearColor(0.0, 0.0, 0.0, 0.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	//we need a shader specially for this task, lets call it "deferred"
 	Shader* sh = NULL;
@@ -365,11 +360,12 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh->setUniform("u_ao", activate_ssao);
 	sh->setUniform("u_hdr", hdr_active);
 	sh->setUniform("u_gamma", hdr_gamma);
-			
+		
 	if (directional_light) {
 		sh->setUniform("u_pcf", pcf);
 		directional_light->uploadLightParams(sh, true, hdr_gamma);
 	}
+	else { sh->setUniform("u_light_eq", 5); }
 
 	quad->render(GL_TRIANGLES);
 
