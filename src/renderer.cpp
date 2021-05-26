@@ -33,7 +33,7 @@ Renderer::Renderer()
 	show_gbuffers = false;
 
 	ssao = new SSAO();
-	show_ao = false;
+	show_omr = false;
 	activate_ssao = false;
 
 	hdr_active = false;
@@ -875,31 +875,40 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 	int width = Application::instance->window_width;
 	int height = Application::instance->window_height;
 
-	glViewport(0, 0, width * 0.5, height * 0.5);
-	gbuffers_fbo->color_textures[0]->toViewport();
-
-	glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
-	gbuffers_fbo->color_textures[1]->toViewport();
-
-	glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-	if (show_ao)
+	if (show_omr)
 	{
+		Shader* omr_shader = Shader::Get("omr");
+
+		glViewport(0, 0, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[2]->toViewport(omr_shader); //metallic bottom left
+
+		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[1]->toViewport(omr_shader); //occlusion texture top right
+
+		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[0]->toViewport(omr_shader); //roughness top left
+
+		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		if (activate_ssao)
-			ssao->ssao_fbo->color_textures[0]->toViewport();
-		else
-		{
-			Shader* ao_shader = Shader::Get("ao");
-			gbuffers_fbo->color_textures[2]->toViewport(ao_shader);
-		}
+			ssao->ssao_fbo->color_textures[0]->toViewport(); //SSAO bottom right
 	}
 	else 
+	{
+		glViewport(0, 0, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[0]->toViewport();
+
+		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[1]->toViewport();
+
+		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[2]->toViewport();
 
-	glViewport(0, height * 0.5, width * 0.5, height * 0.5);
-	Shader* depth_shader = Shader::Get("depth");
-	depth_shader->enable();
-	depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
-	gbuffers_fbo->depth_texture->toViewport(depth_shader);
+		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+		Shader* depth_shader = Shader::Get("depth");
+		depth_shader->enable();
+		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+		gbuffers_fbo->depth_texture->toViewport(depth_shader);
+	}
 }
 
 

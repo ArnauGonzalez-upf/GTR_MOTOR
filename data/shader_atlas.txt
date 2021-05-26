@@ -16,7 +16,7 @@ deferred_multi quad.vs deferred_multi.fs
 deferred_single quad.vs deferred_single.fs
 deferred_ws basic.vs deferred_multi.fs
 ssao quad.vs ssao.fs
-ao quad.vs ao.fs
+omr quad.vs omr.fs
 hdr quad.vs hdr.fs
 
 \normal_functions
@@ -201,11 +201,11 @@ vec3 F_Schlick( const in float VoH, const in vec3 f0)
 }
 
 //to compute the direct contribution to the light
-vec3 compute_direct(vec3 color, float metallic, float roughness, float NdotH, float LdotH, float NdotV, float NdotL, int u_light_eq)
+vec3 compute_direct(vec3 color, float metallic, float roughness, float NdotH, float HdotV, float NdotV, float NdotL, int u_light_eq)
 {
 	//we compute the reflection in base to the color and the metalness
-	vec3 F0 = vec3(0.04); //common material
-	//vec3 F0 = vec3(0.5); //common material
+	//vec3 F0 = vec3(0.04); //common material
+	vec3 F0 = vec3(0.5);
 	F0 = mix( F0, color.xyz, metallic );
 
 	//metallic materials do not have diffuse
@@ -216,7 +216,7 @@ vec3 compute_direct(vec3 color, float metallic, float roughness, float NdotH, fl
 	float D = D_GGX( NdotH, roughness );
 
 	// Fresnel Function
-	vec3 F = F_Schlick( LdotH, F0 );
+	vec3 F = F_Schlick( HdotV, F0 );
 
 	// Visibility Function (shadowing/masking)
 	float G = G_Smith( NdotV, NdotL, roughness );
@@ -232,7 +232,7 @@ vec3 compute_direct(vec3 color, float metallic, float roughness, float NdotH, fl
 		Fd_d = diffuseColor * kD * Fd_Lambert(); 
 	}
 	else if(u_light_eq == 2) // BURLEY
-		Fd_d = diffuseColor * Fd_Burley(NdotV, NdotL, LdotH, roughness); 
+		Fd_d = diffuseColor * Fd_Burley(NdotV, NdotL, HdotV, roughness); 
 
 	//add diffuse and specular reflection
 	vec3 direct = Fd_d + Fr_d;
@@ -954,12 +954,6 @@ void main()
 	float metallic = material_properties.b * u_metallic;
 	float roughness = material_properties.g * u_roughness;
 
-	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
-	if (metallic == 1.0)
-		material_properties.b = u_metallic;
-	if (roughness == 1.0)
-		material_properties.g = u_roughness;
-
 	vec3 N = normalize(v_normal);
 	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
 
@@ -1141,6 +1135,7 @@ void main()
 	float NdotL = max(dot(N,L),0.0);
 	float NdotH = max(dot(N,H),0.0);
 	float NdotV = max(dot(N,V),0.0);
+	float HdotV = max(dot(H,V),0.0);
 	float LdotH = max(dot(L,H),0.0);
 
 	//store the light parameters
@@ -1151,7 +1146,7 @@ void main()
 	else 				// DIRECT
 	{
 
-		vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, LdotH, NdotV, NdotL, u_light_eq);
+		vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, HdotV, NdotV, NdotL, u_light_eq);
 		light += direct * light_params;
 	}
 
@@ -1303,7 +1298,7 @@ void main()
 	FragColor = vec4(ao);
 }
 
-\ao.fs
+\omr.fs
 
 #version 330 core
 
@@ -1316,7 +1311,9 @@ out vec4 FragColor;
 void main()
 {
 	vec2 uv = v_uv;
-	float color = texture( u_texture, v_uv ).r;
+
+	//all values that we want to fetch (occlusion, metallic, roughness) are stored in alpha channel
+	float color = texture( u_texture, v_uv ).a;
 
 	FragColor = vec4(color,color,color,1.0);
 }
