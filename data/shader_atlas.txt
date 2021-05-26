@@ -1362,7 +1362,7 @@ void main()
 
     	rgb = (rgb / lum) * Ld;
     	rgb = max(rgb,vec3(0.001));
-    	rgb = pow( rgb, vec3( u_igamma ) );
+    	rgb = pow( rgb, vec3( u_igamma ) ); //pelpull
 
 	
 	FragColor = vec4(rgb, 1.0);
