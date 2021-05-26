@@ -64,7 +64,7 @@ namespace GTR {
 		bool pcf;
 		bool depth_viewport;
 		bool show_gbuffers;
-		bool show_ao; // to show only AO in material properties
+		bool show_omr; // to show only AO in material properties
 		bool activate_ssao; // to activate generating AO instead of using the texture
 
 		int depth_light;
