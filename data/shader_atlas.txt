@@ -961,13 +961,13 @@ void main()
 		material_properties.g = u_roughness;
 
 	vec3 N = normalize(v_normal);
-	/*vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
+	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
 
 	//Perturbing the normal if there is a normalmap
 	if (normal_pixel != vec3(0,0,0))
 	{
 		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
-	}*/
+	}
 
 	FragColor = vec4(color.xyz, roughness);
 	NormalColor = vec4(N * 0.5 + vec3(0.5), material_properties.r);
@@ -1144,7 +1144,7 @@ void main()
 	float LdotH = max(dot(L,H),0.0);
 
 	//store the light parameters
-	vec3 light_params = NdotL * u_light_color /*pow(u_light_color,vec3(2.2))*/ * spot_factor * att_factor * shadow_factor * u_light_intensity;
+	vec3 light_params = NdotL * u_light_color * spot_factor * att_factor * shadow_factor * u_light_intensity;
 
 	if (u_light_eq == 0) 		// PHONG
 		light += light_params;
