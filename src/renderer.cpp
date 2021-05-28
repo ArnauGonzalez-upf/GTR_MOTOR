@@ -629,7 +629,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 {
 	//allow to render pixels that have the same depth as the one in the depth buffer
-	glDepthFunc(GL_LESS);
+	glDepthFunc(GL_LEQUAL);
 
 	for (int i = 0; i < lights.size(); ++i)
 	{
