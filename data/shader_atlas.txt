@@ -515,7 +515,7 @@ in vec3 v_world_position;
 in vec3 v_normal;
 in vec2 v_uv;
 
-uniform vec3 u_camera_pos;
+uniform vec3 u_camera_position;
 uniform vec3 u_ambient_light;
 uniform vec3 u_emissive;
 uniform vec4 u_color;
@@ -567,14 +567,8 @@ void main()
 	//Getting values from textures
 	vec4 baseColor = texture( u_texture, v_uv );
 	color *= baseColor;
-	float metallic = texture(u_texture_metallic_roughness, v_uv).b;	 //metallic
-	float roughness = texture(u_texture_metallic_roughness, v_uv).g; //roughness
-
-	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
-	if (metallic == 1.0)
-		metallic = u_metallic;
-	if (roughness == 1.0)
-		roughness = u_roughness;
+	float metallic = texture(u_texture_metallic_roughness, v_uv).b * u_metallic;	 //metallic
+	float roughness = texture(u_texture_metallic_roughness, v_uv).g * u_roughness; //roughness
 
 	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	emissive *= texture( u_texture_em, v_uv );
@@ -595,7 +589,7 @@ void main()
 
 	//Defining the light vector
 	vec3 L;
-	vec3 V = normalize(u_camera_pos-v_world_position);
+	vec3 V = normalize(u_camera_position - v_world_position);
 
 	//Summing the ambient light because it always is
 	light += u_ambient_light;
@@ -603,7 +597,6 @@ void main()
 
 	for (int i = 0; i < MAX_LIGHTS; ++i)
 	{
-
 		//Defining the position in light space
 		vec4 v_lightspace_position = u_shadow_viewproj[i] * vec4(v_world_position, 1.0);
 
@@ -676,7 +669,7 @@ void main()
 			light += light_params;
 		else 				// DIRECT
 		{
-			vec3 direct = compute_direct(baseColor.xyz, metallic, roughness, NdotH, LdotH, NdotV, NdotL, u_light_eq);
+			vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, LdotH, NdotV, NdotL, u_light_eq);
 			light += direct * light_params;
 		}
 	}
@@ -844,7 +837,7 @@ void main()
 		light += light_params;
 	else 				// DIRECT
 	{
-		vec3 direct = compute_direct(baseColor.xyz, metallic, roughness, NdotH, LdotH, NdotV, NdotL, u_light_eq);
+		vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, LdotH, NdotV, NdotL, u_light_eq);
 		light += direct * light_params;
 	}
 

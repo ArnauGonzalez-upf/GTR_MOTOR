@@ -22,7 +22,8 @@ namespace GTR {
 
 	enum eLightMode {
 		SINGLE,
-		MULTI
+		MULTI,
+		BRUH
 	};
 
 	enum eLightEq {

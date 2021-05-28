@@ -19,8 +19,8 @@ using namespace GTR;
 
 Renderer::Renderer()
 {
-	render_mode = eRenderMode::DEFERRED;
-	light_mode = eLightMode::MULTI;
+	render_mode = eRenderMode::FORWARD;
+	light_mode = eLightMode::SINGLE;
 	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
@@ -244,7 +244,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
 						4,             //four textures
 						GL_RGBA,         //four channels
-						GL_HALF_FLOAT, //1 byte
+			GL_HALF_FLOAT, //1 byte
 						true);        //add depth_texture)
 	}
 
@@ -393,15 +393,26 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	renderMultiPassSphere(sh, camera);
 
 	sh->disable();
+	
+	//gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture, NULL);
+
+	/*render_mode = DEFERRED;
+	std::vector<RenderCall> new_calls;
+
+	lights.push_back(directional_light);
+	glEnable(GL_BLEND);
+	for (int i = 0; i < calls.size(); ++i)
+	{
+		if (calls[i].material->alpha_mode == BLEND)
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+	}
+	render_mode = DEFERRED;*/
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 
 	illumination_fbo->unbind();
-
-	//be sure blending is not active
-	glDisable(GL_BLEND);
 
 	if (show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
@@ -498,6 +509,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		glEnable(GL_CULL_FACE);
 	assert(glGetError() == GL_NO_ERROR);
 
+	//if (render_mode == DEFERRED && material->alpha_mode == BLEND)
+	//	return;
+
 	//chose a shader
 	switch (render_mode) {
 		case FORWARD:
@@ -546,6 +560,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		texture = Texture::getWhiteTexture(); //a 1x1 white texture
 	if (!texture_met_rough)
 		texture_met_rough = Texture::getWhiteTexture(); //a 1x1 white texture
+
 	shader->setUniform("u_metallic", material->metallic_factor);
 	shader->setUniform("u_roughness", material->roughness_factor);
 
@@ -593,6 +608,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}
+
 		renderSinglePass(shader, mesh);
 	}
 	else 
@@ -772,6 +788,9 @@ void Renderer::renderToAtlas(Camera* camera) {
 	for (int i = 0; i < lights.size(); ++i) {
 		
 		LightEntity* light = lights[i];
+
+		if (light->light_type == POINT)
+			continue;
 
 		updateLight(light, camera);
 
