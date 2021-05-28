@@ -311,6 +311,7 @@ void Application::renderDebugGUI(void)
 	//Enabling SSAO
 	if (renderer->render_mode == GTR::DEFERRED)
 	{
+		ImGui::Checkbox("dithering", &renderer->dithering);
 		ImGui::Checkbox("SSAO", &renderer->activate_ssao);
 		if (renderer->activate_ssao)
 			ImGui::SliderFloat("SSAO Factor", &renderer->ssao->intensity, 0.1f, 10.0f);

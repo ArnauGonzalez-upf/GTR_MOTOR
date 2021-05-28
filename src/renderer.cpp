@@ -24,6 +24,7 @@ Renderer::Renderer()
 	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
+	dithering = false;
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
@@ -160,15 +161,13 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 
 			if (light->light_type == DIRECTIONAL)
 			{
-				if (render_mode == DEFERRED) { directional_light = light; }
-				else { lights.push_back(light); }
+				render_mode == DEFERRED ? directional_light = light: lights.push_back(light);
 				shadow_count++;
 			}
 			else if (light->lightBounding(camera)) 
 			{
-				if (light->light_type != POINT) {
+				if (light->light_type != POINT)
 					shadow_count++;
-				}
 				lights.push_back(light);
 			}
 		}
@@ -196,8 +195,10 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	else if (light_mode == SINGLE)
 		renderToAtlas(camera);
 
-	if (render_mode == FORWARD)	{ renderForward(calls, camera); }
-	else if (render_mode == DEFERRED) { renderDeferred(calls, camera); }
+	if (render_mode == FORWARD)
+		renderForward(calls, camera);
+	else if (render_mode == DEFERRED)
+		renderDeferred(calls, camera);
 
 	//If render_debug is active, draw the grid
 	if (Application::instance->render_debug)
@@ -393,20 +394,25 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	renderMultiPassSphere(sh, camera);
 
 	sh->disable();
-	
-	//gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture, NULL);
 
-	/*render_mode = DEFERRED;
-	std::vector<RenderCall> new_calls;
+	if (!dithering) {
+		render_mode = FORWARD;
+		light_mode = MULTI;
+		gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture, NULL);
 
-	lights.push_back(directional_light);
-	glEnable(GL_BLEND);
-	for (int i = 0; i < calls.size(); ++i)
-	{
-		if (calls[i].material->alpha_mode == BLEND)
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+		lights.push_back(directional_light);
+		for (int i = 0; i < calls.size(); ++i)
+		{
+			if (calls[i].material->alpha_mode != BLEND)
+				continue;
+			//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
+			BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+			//if bounding box is inside the camera frustum then the object is probably visible
+			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
+				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+		}
+		render_mode = DEFERRED;
 	}
-	render_mode = DEFERRED;*/
 
 	//disable depth test and blend!!
 	glDisable(GL_DEPTH_TEST);
@@ -509,9 +515,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		glEnable(GL_CULL_FACE);
 	assert(glGetError() == GL_NO_ERROR);
 
-	//if (render_mode == DEFERRED && material->alpha_mode == BLEND)
-	//	return;
-
 	//chose a shader
 	switch (render_mode) {
 		case FORWARD:
@@ -578,7 +581,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
 
-	if (render_mode == FORWARD && light_mode == MULTI) 
+	if (render_mode == FORWARD && light_mode == MULTI)
 	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
@@ -586,21 +589,21 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		}
-		else 
+		else
 		{
 			glDisable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 		}
 
 		if (lights.size() == 0) //Taking care of the "no lights" scenario
-		{ 
-			shader->setUniform("u_light_type", (int)NO_LIGHT); 
-			mesh->render(GL_TRIANGLES); 
+		{
+			shader->setUniform("u_light_type", (int)NO_LIGHT);
+			mesh->render(GL_TRIANGLES);
 		}
-		else 
+		else
 			renderMultiPass(mesh, material, shader);
 	}
-	else if (render_mode == FORWARD && light_mode == SINGLE) 
+	else if (render_mode == FORWARD && light_mode == SINGLE)
 	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
@@ -611,8 +614,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 
 		renderSinglePass(shader, mesh);
 	}
-	else 
-		mesh->render(GL_TRIANGLES);
+	else
+		if (dithering || material->alpha_mode != BLEND)
+			mesh->render(GL_TRIANGLES);
 
 	//disable shader
 	shader->disable();
@@ -625,7 +629,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 {
 	//allow to render pixels that have the same depth as the one in the depth buffer
-	glDepthFunc(GL_LEQUAL);
+	glDepthFunc(GL_LESS);
 
 	for (int i = 0; i < lights.size(); ++i)
 	{
