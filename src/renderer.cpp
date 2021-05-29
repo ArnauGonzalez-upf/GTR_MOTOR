@@ -19,8 +19,8 @@ using namespace GTR;
 
 Renderer::Renderer()
 {
-	render_mode = eRenderMode::FORWARD;
-	light_mode = eLightMode::SINGLE;
+	render_mode = eRenderMode::DEFERRED;
+	light_mode = eLightMode::MULTI;
 	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
@@ -127,6 +127,70 @@ void Renderer::shadowMapping(LightEntity* light, Camera* camera)
 	//disable it to render back to the screen
 	light->shadow_fbo->unbind();
 	glColorMask(true, true, true, true);
+}
+
+void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera)
+{
+	if (gbuffers_fbo->fbo_id == 0) {
+		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
+			3,             //four textures
+			GL_RGBA,         //four channels
+			GL_HALF_FLOAT, //1 byte
+			true);        //add depth_texture)
+	}
+
+	if (illumination_fbo->fbo_id == 0) {
+		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
+			1,            //one textures
+			GL_RGB,       //four channels
+			GL_HALF_FLOAT,//half float
+			true);        //add depth_texture)
+	}
+
+	//start rendering inside the gbuffers
+	gbuffers_fbo->bind();
+
+	//we clear in several passes so we can control the clear color independently for every gbuffer
+	//disable all but the GB0 (and the depth)
+	gbuffers_fbo->enableSingleBuffer(0);
+
+	//clear GB0 with the color (and depth)
+	Vector3 bg_color = Scene::instance->background_color;
+	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	//and now enable the second GB to clear it to black
+	gbuffers_fbo->enableSingleBuffer(1);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//and now enable the second GB to clear it to black
+	gbuffers_fbo->enableSingleBuffer(2);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//enable all buffers back
+	gbuffers_fbo->enableAllBuffers();
+
+	//render everything 
+	//Rendering the final scene
+	for (int i = 0; i < calls.size(); ++i)
+	{
+		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
+		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+
+		//if bounding box is inside the camera frustum then the object is probably visible
+		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
+		{
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
+		}
+	}
+
+	//stop rendering to the gbuffers
+	gbuffers_fbo->unbind();
+
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 }
 
 void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
@@ -241,87 +305,17 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 {
-	if (gbuffers_fbo->fbo_id == 0){
-		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
-						4,             //four textures
-						GL_RGBA,         //four channels
-			GL_HALF_FLOAT, //1 byte
-						true);        //add depth_texture)
-	}
-
-	if (illumination_fbo->fbo_id == 0) {
-		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
-								1,            //one textures
-								GL_RGB,       //four channels
-								GL_HALF_FLOAT,//half float
-								true);        //add depth_texture)
-	}
-
-	//start rendering inside the gbuffers
-	gbuffers_fbo->bind();
-
-	//we clear in several passes so we can control the clear color independently for every gbuffer
-	//disable all but the GB0 (and the depth)
-	gbuffers_fbo->enableSingleBuffer(0);
-
-	//clear GB0 with the color (and depth)
-	Vector3 bg_color = Scene::instance->background_color;
-	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	//and now enable the second GB to clear it to black
-	gbuffers_fbo->enableSingleBuffer(1);
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	//and now enable the second GB to clear it to black
-	gbuffers_fbo->enableSingleBuffer(2);
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	//enable all buffers back
-	gbuffers_fbo->enableAllBuffers();
-
-	//render everything 
-	//Rendering the final scene
-	for (int i = 0; i < calls.size(); ++i)
-	{
-		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
-		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
-
-		//if bounding box is inside the camera frustum then the object is probably visible
-		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
-		}
-	}
-
-	//stop rendering to the gbuffers
-	gbuffers_fbo->unbind();
-	
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
-
-	//we need a fullscreen quad
-	Mesh* quad = Mesh::getQuad();
-
-	//bind the texture we want to change
-	gbuffers_fbo->depth_texture->bind();
-
-	//disable using mipmaps
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	//enable bilinear filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-	gbuffers_fbo->depth_texture->unbind();
+	renderGBuffers(calls, camera);
 
 	Texture* ao = NULL;
 	if (activate_ssao)
 		ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
+
+	//we need a fullscreen quad
+	Mesh* quad = Mesh::getQuad();
 
 	//start rendering inside the gbuffers
 	illumination_fbo->bind();
@@ -334,33 +328,13 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh = Shader::Get("deferred_multi");
 	sh->enable();
 
-	//pass the gbuffers to the shader
-	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
-	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
-	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
-	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	passDeferredUniforms(sh, true, camera, w, h);
+
 	if (activate_ssao)
 	{
 		sh->setUniform("u_ao_texture", ao, 5);
 		sh->setUniform("u_ao_factor", ssao->intensity);
 	}
-
-	//pass the inverse projection of the camera to reconstruct world pos.
-	Matrix44 inv_vp = camera->viewprojection_matrix;
-	inv_vp.inverse();
-	sh->setUniform("u_inverse_viewprojection", inv_vp);
-	//pass the inverse window resolution, this may be useful
-	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
-
-	//Light uniforms
-	sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
-	sh->setUniform("u_emissive", true);
-	sh->setUniform("u_back", true);
-	sh->setUniform("u_light_eq", light_eq);
-	sh->setUniform("u_camera_position", camera->eye);
-	sh->setUniform("u_ao", activate_ssao);
-	sh->setUniform("u_hdr", hdr_active);
-	sh->setUniform("u_gamma", hdr_gamma);
 		
 	if (directional_light) {
 		sh->setUniform("u_pcf", pcf);
@@ -377,25 +351,12 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	sh->enable();
 
-	//pass the gbuffers to the shader
-	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
-	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
-	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
-	sh->setUniform("u_emissive_texture", gbuffers_fbo->color_textures[3], 3);
-	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
-
-	//pass the inverse projection of the camera to reconstruct world pos.
-	sh->setUniform("u_inverse_viewprojection", inv_vp);
-	//pass the inverse window resolution, this may be useful
-	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
-	sh->setUniform("u_ao", false);
-	sh->setUniform("u_hdr", hdr_active);
-
+	passDeferredUniforms(sh, true, camera, w, h);
 	renderMultiPassSphere(sh, camera);
 
 	sh->disable();
 
-	if (!dithering) {
+	/*if (!dithering) {
 		render_mode = FORWARD;
 		light_mode = MULTI;
 		gbuffers_fbo->depth_texture->copyTo(illumination_fbo->depth_texture, NULL);
@@ -412,11 +373,11 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera);
 		}
 		render_mode = DEFERRED;
-	}
+	}*/
 
 	//disable depth test and blend!!
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	//glDisable(GL_DEPTH_TEST);
+	//glDisable(GL_BLEND);
 
 	illumination_fbo->unbind();
 
@@ -659,7 +620,6 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 	//first pass doesn't use blending)
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
-
 	glEnable(GL_CULL_FACE);
 
 	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
@@ -957,6 +917,17 @@ SSAO::SSAO()
 
 Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera)
 {
+	//bind the texture we want to change
+	depth_buffer->bind();
+
+	//disable using mipmaps
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	//enable bilinear filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	depth_buffer->unbind();
+
 	Mesh* quad = Mesh::getQuad();
 
 	//start rendering inside the ssao texture
@@ -989,4 +960,39 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	ssao_fbo->unbind();
 
 	return ssao_fbo->color_textures[0];
+}
+
+void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h)
+{
+	//pass the gbuffers to the shader
+	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
+	sh->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
+	sh->setUniform("u_extra_texture", gbuffers_fbo->color_textures[2], 2);
+	sh->setUniform("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+
+	//pass the inverse projection of the camera to reconstruct world pos.
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	sh->setUniform("u_inverse_viewprojection", inv_vp);
+	//pass the inverse window resolution, this may be useful
+	sh->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+	//Light uniforms
+	if (first_pass)
+	{
+		sh->setVector3("u_ambient_light", GTR::Scene::instance->ambient_light);
+		sh->setUniform("u_emissive", true);
+		sh->setUniform("u_back", true);
+		sh->setUniform("u_ao", activate_ssao);
+	}
+	else {
+		sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
+		sh->setUniform("u_emissive", false);
+		sh->setUniform("u_back", false);
+		sh->setUniform("u_ao", false);
+	}
+
+	sh->setUniform("u_light_eq", light_eq);
+	sh->setUniform("u_camera_position", camera->eye);
+	sh->setUniform("u_gamma", hdr_gamma);
 }

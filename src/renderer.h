@@ -120,8 +120,10 @@ namespace GTR {
 		//renderers
 		void renderForward(std::vector<RenderCall> calls, Camera* camera);
 		void renderDeferred(std::vector<RenderCall> calls, Camera* camera);
+		void passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h);
 
 		//
+		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera);
 		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
 	};
 
