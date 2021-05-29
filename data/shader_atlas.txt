@@ -13,11 +13,11 @@ shadowmap basic.vs shadowmap.fs
 atlas quad.vs atlas.fs
 gbuffers basic.vs gbuffers.fs
 deferred_multi quad.vs deferred_multi.fs
-deferred_single quad.vs deferred_single.fs
 deferred_ws basic.vs deferred_multi.fs
 ssao quad.vs ssao.fs
 omr quad.vs omr.fs
 hdr quad.vs hdr.fs
+deferred_alpha quad.vs 
 
 \normal_functions
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -543,6 +543,7 @@ uniform float u_shadow_bias[MAX_LIGHTS];
 uniform float u_alpha_cutoff;
 uniform float u_metallic;
 uniform float u_roughness;
+uniform float u_gamma;
 
 uniform mat4 u_shadow_viewproj[MAX_LIGHTS];
 
@@ -566,12 +567,23 @@ void main()
 	
 	//Getting values from textures
 	vec4 baseColor = texture( u_texture, v_uv );
+	baseColor.xyz = pow(baseColor.xyz, vec3(u_gamma));
 	color *= baseColor;
+
+	vec4 emissiveColor = texture( u_texture_em, v_uv );
+	emissiveColor.xyz = pow(emissiveColor.xyz, vec3(u_gamma));
+	emissive *= emissiveColor;
+
 	float metallic = texture(u_texture_metallic_roughness, v_uv).b * u_metallic;	 //metallic
 	float roughness = texture(u_texture_metallic_roughness, v_uv).g * u_roughness; //roughness
 
+	//maybe it doesnt have metallic roughness texture (white texture), then pass the uniform from material properties
+	if (metallic == 1.0)
+		metallic = u_metallic;
+	if (roughness == 1.0)
+		roughness = u_roughness;
+
 	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
-	emissive *= texture( u_texture_em, v_uv );
 	vec3 normal_pixel = texture2D( u_texture_normals, v_uv ).xyz;
 
 	//Check blending
@@ -710,6 +722,7 @@ uniform float u_shadow_bias;
 uniform float u_alpha_cutoff;
 uniform float u_metallic;
 uniform float u_roughness;
+uniform float u_gamma;
 
 uniform bool u_pcf;
 uniform bool u_shadows;
@@ -732,8 +745,15 @@ void main()
 	vec4 color = u_color;
 	vec4 emissive = vec4( u_emissive, 1.0 );
 
-	//read from textures
-	vec4 baseColor = texture( u_texture, v_uv ); 			 //albedo
+	//Getting values from textures
+	vec4 baseColor = texture( u_texture, v_uv );
+	baseColor.xyz = pow(baseColor.xyz, vec3(u_gamma));
+	color *= baseColor;
+
+	vec4 emissiveColor = texture( u_texture_em, v_uv );
+	emissiveColor.xyz = pow(emissiveColor.xyz, vec3(u_gamma));
+	emissive *= emissiveColor;
+
 	float metallic = texture(u_texture_metallic_roughness, v_uv).b;	 //metallic
 	float roughness = texture(u_texture_metallic_roughness, v_uv).g; //roughness
 
@@ -742,10 +762,7 @@ void main()
 		metallic = u_metallic;
 	if (roughness == 1.0)
 		roughness = u_roughness;
-	
-	//Getting values from textures
-	color *= baseColor;
-	emissive *= texture( u_texture_em, v_uv );
+
 	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
 
@@ -761,12 +778,14 @@ void main()
 	{
 		N = perturbNormal(N, v_world_position, v_uv, normal_pixel);
 	}
+
 	//other useful vectors
 	vec3 L;
-	vec3 V = normalize(u_camera_position-v_world_position);
+	vec3 V = normalize(u_camera_position - v_world_position);
 
 	//Defining the position in light space
 	vec4 v_lightspace_position = u_shadow_viewproj * vec4(v_world_position, 1.0);	
+
 	//Defining all light attenuation factors
 	float shadow_factor = 1.0;
 	float spot_factor = 1.0;
@@ -791,9 +810,6 @@ void main()
 
 		//Compute distance and define the attenuation factor
 		float light_distance = length( L );
-
-		//float b = 1.0/u_light_maxdist;
-		//att_factor = exp(b*d) * (1-b*d);
 
 		//compute a linear attenuation factor
 		att_factor = u_light_maxdist - light_distance;
@@ -1200,6 +1216,7 @@ void main()
 in vec2 v_uv;
 
 uniform int u_samples;
+uniform bool u_ssao_plus;
 
 #define MAX_SAMPLES 512
 
@@ -1259,19 +1276,25 @@ void main()
 	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 
 	int num = u_samples; //num samples that passed the are outside
-
-	//to create the matrix33 to convert from tangent to world
-	mat3 rotmat = cotangent_frame( normal, worldpos, uv );
+	
+	mat3 rotmat;
+	if (u_ssao_plus)
+	{
+		//to create the matrix33 to convert from tangent to world
+		rotmat = cotangent_frame( normal, worldpos, uv );
+	}
 
 	//for every sample around the point
 	for (int i = 0; i < MAX_SAMPLES; ++i)
 	{
 		if (i < u_samples)
 		{
-			vec3 rotated_point = rotmat * u_points[i];
+			vec3 point;
+			if (u_ssao_plus) { point = rotmat * u_points[i]; }
+			else { point = u_points[i]; }
 
-   			//compute is world position using the random
-    			vec3 p = worldpos + rotated_point * 10.0;
+			//compute is world position using the random
+    			vec3 p = worldpos + point * 10.0;
 
     			//find the uv in the depth buffer of this point
     			vec4 proj = u_viewprojection * vec4(p,1.0);
@@ -1299,6 +1322,7 @@ void main()
 
 in vec2 v_uv;
 
+uniform float u_igamma;
 uniform sampler2D u_texture;
 
 out vec4 FragColor;
@@ -1310,7 +1334,7 @@ void main()
 	//all values that we want to fetch (occlusion, metallic, roughness) are stored in alpha channel
 	float color = texture( u_texture, v_uv ).a;
 
-	FragColor = vec4(color,color,color,1.0);
+	FragColor = vec4(color, color, color, 1.0);
 }
 
 \hdr.fs
@@ -1325,6 +1349,8 @@ uniform float u_lumwhite2;
 uniform float u_scale;
 uniform float u_igamma;
 
+uniform bool u_hdr;
+
 out vec4 FragColor;
 
 void main()
@@ -1332,13 +1358,17 @@ void main()
 
 	vec4 color = texture2D( u_texture, v_uv );
 	vec3 rgb = color.xyz;
+	
+	if (u_hdr)
+	{
+		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  		float L_HDR = (u_scale / u_average_lum) * lum;
+		float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
 
-	float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-  	float L_HDR = (u_scale / u_average_lum) * lum;
-	float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
+    		rgb = (rgb / lum) * Ld;
+    		rgb = max(rgb,vec3(0.001));
+	}
 
-    	rgb = (rgb / lum) * Ld;
-    	rgb = max(rgb,vec3(0.001));
     	rgb = pow( rgb, vec3( u_igamma ) ); //pelpull
 
 	

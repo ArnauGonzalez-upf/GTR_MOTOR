@@ -106,7 +106,7 @@ void Application::render(void)
 	//renderer->renderPrefab( model, prefab, camera );
 
 	//renderer->renderToFBO(scene, camera);
-	renderer->renderScene(scene, camera);
+	renderer->renderToFBO(scene, camera);
 
 	//Draw the floor grid, helpful to have a reference point
 	//if(render_debug && !renderer->depth_viewport)
@@ -306,7 +306,17 @@ void Application::renderDebugGUI(void)
 	}else{ ImGui::Text("No Depth Buffer light selected for viewport"); }
 
 	//Enabling PCF
-	ImGui::Checkbox("PCF (for Multi Pass)", &renderer->pcf);
+	ImGui::Checkbox("PCF", &renderer->pcf);
+
+	//Enabling HDR
+	ImGui::Checkbox("HDR", &renderer->hdr_active);
+	if (renderer->hdr_active)
+	{
+		ImGui::SliderFloat("HDR Scale", &renderer->hdr_scale, 0.1f, 5.0f);
+		ImGui::SliderFloat("HDR Average Luminance", &renderer->hdr_average_lum, 0.1f, 10.0f);
+		ImGui::SliderFloat("HDR White Balance", &renderer->hdr_white_balance, 0.1f, 10.0f);
+		ImGui::SliderFloat("HDR Gamma Correction", &renderer->hdr_gamma, 0.25f, 2.5f);
+	}
 
 	//Enabling SSAO
 	if (renderer->render_mode == GTR::DEFERRED)
@@ -314,15 +324,18 @@ void Application::renderDebugGUI(void)
 		ImGui::Checkbox("dithering", &renderer->dithering);
 		ImGui::Checkbox("SSAO", &renderer->activate_ssao);
 		if (renderer->activate_ssao)
+		{
+			bool changed_ssao_plus = false;
+			changed_ssao_plus |= ImGui::Checkbox("SSAO+", &renderer->ssao->plus);
+
 			ImGui::SliderFloat("SSAO Factor", &renderer->ssao->intensity, 0.1f, 10.0f);
 
-		ImGui::Checkbox("HDR", &renderer->hdr_active);
-		if (renderer->hdr_active)
-		{
-			ImGui::SliderFloat("HDR Scale", &renderer->hdr_scale, 0.1f, 5.0f);
-			ImGui::SliderFloat("HDR Average Luminance", &renderer->hdr_average_lum, 0.1f, 10.0f);
-			ImGui::SliderFloat("HDR White Balance", &renderer->hdr_white_balance, 0.1f, 10.0f);
-			ImGui::SliderFloat("HDR Gamma Correction", &renderer->hdr_gamma, 0.25f, 2.5f);
+			bool changed_ssao_samples = false;
+			changed_ssao_samples |= ImGui::SliderInt("SSAO Samples", &renderer->ssao->samples, 1, 500);
+
+
+			if (changed_ssao_plus || changed_ssao_samples)
+				renderer->ssao->points = generateSpherePoints(renderer->ssao->samples, 1.0f, renderer->ssao->plus);
 		}
 	}
 
@@ -444,5 +457,13 @@ void Application::onResize(int width, int height)
 	window_width = width;
 	window_height = height;
 	change_res == true;
+
+	if (renderer->gbuffers_fbo->fbo_id != 0) {
+		renderer->gbuffers_fbo->~FBO();
+		renderer->gbuffers_fbo->create(window_width, window_height, 3, GL_RGBA, GL_HALF_FLOAT, true);
+	}
+
+	renderer->illumination_fbo->~FBO();
+	renderer->illumination_fbo->create(window_width, window_height, 1, GL_RGBA, GL_HALF_FLOAT, true);
 }
 

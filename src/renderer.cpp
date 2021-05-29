@@ -28,20 +28,27 @@ Renderer::Renderer()
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
-	illumination_fbo = new FBO();
 	atlas = NULL;
 
 	show_gbuffers = false;
 
-	ssao = new SSAO();
-	show_omr = false;
-	activate_ssao = false;
+	activate_ssao = true;
+	ssao = new SSAO(64, true);
 
-	hdr_active = false;
+	show_omr = false;
+
+	hdr_active = true;
 	hdr_scale = 1.0;
 	hdr_average_lum = 1.5;
 	hdr_white_balance = 0.5;
 	hdr_gamma = 2.2;
+
+	illumination_fbo = new FBO();
+	illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
+			1,            //one textures
+			GL_RGB,       //four channels
+			GL_HALF_FLOAT,//half float
+			true);        //add depth_texture)
 }
 
 //renders all the prefab
@@ -139,14 +146,6 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera)
 			true);        //add depth_texture)
 	}
 
-	if (illumination_fbo->fbo_id == 0) {
-		illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
-			1,            //one textures
-			GL_RGB,       //four channels
-			GL_HALF_FLOAT,//half float
-			true);        //add depth_texture)
-	}
-
 	//start rendering inside the gbuffers
 	gbuffers_fbo->bind();
 
@@ -191,6 +190,50 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera)
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
+}
+
+void GTR::Renderer::renderToFBO(GTR::Scene* scene, Camera* camera)
+{
+	renderScene(scene, camera);
+
+	//and render the texture into the screen
+	Shader* hdr_shader = Shader::Get("hdr");
+
+	hdr_shader->enable();
+	hdr_shader->setUniform("u_hdr", hdr_active);
+
+	if (hdr_active)
+	{
+		hdr_shader->setUniform("u_scale", hdr_scale);
+		hdr_shader->setUniform("u_average_lum", hdr_average_lum);
+		hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
+		float inv_gamma = 1 / hdr_gamma;
+		hdr_shader->setUniform("u_igamma", inv_gamma);
+	}
+	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+
+
+	if (render_mode == DEFERRED && show_gbuffers) {
+		showGbuffers(gbuffers_fbo, camera);
+	}
+
+	//Render one light camera depth map
+	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
+	{
+		LightEntity* light = lights[depth_light];
+		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
+		Shader* zshader = Shader::Get("depth");
+		zshader->enable();
+
+		//Passing uniforms
+		if (light->light_type == DIRECTIONAL) { zshader->setUniform("u_cam_type", 0); }
+		else { zshader->setUniform("u_cam_type", 1); }
+		zshader->setUniform("u_camera_nearfar", Vector2(light->camera->near_plane, light->camera->far_plane));
+
+		light->shadow_fbo->depth_texture->toViewport(zshader);
+	}
+	if (light_mode == SINGLE && depth_viewport && shadow_count > 0)
+		renderAtlas();
 }
 
 void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
@@ -260,35 +303,23 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 		renderToAtlas(camera);
 
 	if (render_mode == FORWARD)
+	{
+		illumination_fbo->bind();
 		renderForward(calls, camera);
+		illumination_fbo->unbind();
+		glDisable(GL_BLEND);
+		glDisable(GL_DEPTH_TEST);
+	}
 	else if (render_mode == DEFERRED)
 		renderDeferred(calls, camera);
-
-	//If render_debug is active, draw the grid
-	if (Application::instance->render_debug)
-		//drawGrid();
-
-	//Render one light camera depth map
-	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
-	{
-		LightEntity* light = lights[depth_light];
-		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
-		Shader* zshader = Shader::Get("depth");
-		zshader->enable();
-
-		//Passing uniforms
-		if (light->light_type == DIRECTIONAL) { zshader->setUniform("u_cam_type", 0); }
-		else { zshader->setUniform("u_cam_type", 1); }
-		zshader->setUniform("u_camera_nearfar", Vector2(light->camera->near_plane, light->camera->far_plane));
-
-		light->shadow_fbo->depth_texture->toViewport(zshader);
-	}
-	if (light_mode == SINGLE && depth_viewport && shadow_count > 0)
-		renderAtlas();
 }
 
 void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
 {
+	Vector3 bg_color = Scene::instance->background_color;
+	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	//Rendering the final scene
 	for (int i = 0; i < calls.size(); ++i)
 	{
@@ -356,6 +387,14 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 
 	sh->disable();
 
+	//disable depth test and blend!!
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
+	illumination_fbo->unbind();
+
+	//gbuffers_fbo->color_textures[1]->copyTo(illumination_fbo->color_textures[0], Shader::getDefaultShader("screen_depth"));
+
 	/*if (!dithering) {
 		render_mode = FORWARD;
 		light_mode = MULTI;
@@ -374,30 +413,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		}
 		render_mode = DEFERRED;
 	}*/
-
-	//disable depth test and blend!!
-	//glDisable(GL_DEPTH_TEST);
-	//glDisable(GL_BLEND);
-
-	illumination_fbo->unbind();
-
-	if (show_gbuffers) {
-		showGbuffers(gbuffers_fbo, camera);
-	}
-	else {
-		//and render the texture into the screen
-		Shader* hdr_shader = Shader::Get("hdr");
-
-		hdr_shader->enable();
-		hdr_shader->setUniform("u_scale", hdr_scale);
-		hdr_shader->setUniform("u_average_lum", hdr_average_lum);
-		hdr_shader->setUniform("u_lumwhite2", hdr_white_balance);
-		float inv_gamma = 1 / hdr_gamma;
-		hdr_shader->setUniform("u_igamma", inv_gamma);
-
-		illumination_fbo->color_textures[0]->toViewport(hdr_shader);
-	}
-
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -608,7 +623,7 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 			else { shader->setUniform("u_emissive", Vector3(0, 0, 0)); }
 		}
 
-		light->uploadLightParams(shader, false, hdr_gamma);
+		light->uploadLightParams(shader, true, hdr_gamma);
 
 		//render the mesh
 		mesh->render(GL_TRIANGLES);
@@ -683,7 +698,10 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 		LightEntity* light = lights[i];
 
 		light_position[i] = light->model * Vector3(0, 0, 0);
-		light_color[i] = light->color;
+
+		Vector3 l_color = Vector3(pow(light->color.x, hdr_gamma), pow(light->color.y, hdr_gamma), pow(light->color.z, hdr_gamma));
+		light_color[i] = l_color;
+
 		light_maxdistance[i] = light->max_distance;
 		light_type[i] = (int)light->light_type;
 		light_intensity[i] = light->intensity;
@@ -873,14 +891,19 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 	}
 	else 
 	{
+		Shader* hdr_shader = Shader::Get("hdr");
+
+		hdr_shader->enable();
+		hdr_shader->setUniform("u_hdr", false);
+
 		glViewport(0, 0, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[0]->toViewport();
+		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
+
+		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
+		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[1]->toViewport();
-
-		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[2]->toViewport();
 
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 		Shader* depth_shader = Shader::Get("depth");
@@ -903,16 +926,18 @@ Texture* GTR::CubemapFromHDRE(const char* filename)
 	return NULL;
 }
 
-SSAO::SSAO()
+SSAO::SSAO(int points_num, bool ssao_plus)
 {
 	intensity = 1.0;
-	samples = 64;
-	half_sphere = true;
+	samples = points_num;
+	plus = ssao_plus;
 
 	Texture* ssao_texture = new Texture(Application::instance->window_width * 0.5, Application::instance->window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
-	ssao_fbo = Texture::getGlobalFBO(ssao_texture);
+	//ssao_fbo = Texture::getGlobalFBO(ssao_texture);
+	ssao_fbo = new FBO();
+	ssao_fbo->setTexture(ssao_texture);
 
-	points = generateSpherePoints(samples, 1.0f, half_sphere);
+	points = generateSpherePoints(samples, 1.0f, plus);
 }
 
 Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera)
@@ -952,6 +977,7 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	//send random points so we can fetch around
 	shader->setUniform3Array("u_points", (float*)&points[0],points.size());
 	shader->setUniform("u_samples", samples);
+	shader->setUniform("u_ssao_plus", plus);
 
 	//render fullscreen quad
 	quad->render(GL_TRIANGLES);

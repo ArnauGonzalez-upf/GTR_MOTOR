@@ -39,16 +39,15 @@ namespace GTR {
 	class SSAO
 	{
 	public:
-
 		int samples;
 		float intensity;
-		bool half_sphere;
+		bool plus;
 
 		FBO* ssao_fbo;
 
 		std::vector<Vector3> points;
 
-		SSAO();
+		SSAO(int points_num, bool plus);
 		Texture* apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera);
 	};
 
@@ -56,7 +55,7 @@ namespace GTR {
 	{
 
 	public:
-		static const int max_lights = 10; //Setting the maximum light number to 10
+		static const int max_lights = 100; //Setting the maximum light number to 10
 
 		eRenderMode render_mode;
 		eLightMode light_mode;
@@ -91,6 +90,8 @@ namespace GTR {
 
 		//update the light viewproj matrix and parameters
 		void updateLight(LightEntity* light, Camera* camera);
+
+		void renderToFBO(GTR::Scene* scene, Camera* camera);
 
 		//renders several elements of the scene
 		void renderScene(GTR::Scene* scene, Camera* camera);
