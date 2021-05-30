@@ -24,7 +24,7 @@ Renderer::Renderer()
 	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
-	dithering = false;
+	dithering = true;
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
@@ -139,11 +139,14 @@ void Renderer::shadowMapping(LightEntity* light, Camera* camera)
 void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera)
 {
 	if (gbuffers_fbo->fbo_id == 0) {
-		gbuffers_fbo->create(Application::instance->window_width, Application::instance->window_height,
-			3,             //four textures
-			GL_RGBA,         //four channels
-			GL_HALF_FLOAT, //1 byte
-			true);        //add depth_texture)
+		Texture* albedo = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_HALF_FLOAT);
+		Texture* normals = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_UNSIGNED_BYTE);
+		Texture* extra = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_HALF_FLOAT);
+		Texture* depth = new Texture(Application::instance->window_width, Application::instance->window_height, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, false);
+
+		std::vector<Texture*> text = { albedo,normals,extra };
+
+		gbuffers_fbo->setTextures(text, depth);
 	}
 
 	//start rendering inside the gbuffers
@@ -887,7 +890,12 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		if (activate_ssao)
-			ssao->ssao_fbo->color_textures[0]->toViewport(); //SSAO bottom right
+		{
+			if (ssao->blur)
+				ssao->ssao_fbo->color_textures[1]->toViewport(); //SSAO bottom right
+			else
+				ssao->ssao_fbo->color_textures[0]->toViewport(); //SSAO bottom right
+		}
 	}
 	else 
 	{
@@ -931,27 +939,36 @@ SSAO::SSAO(int points_num, bool ssao_plus)
 	intensity = 1.0;
 	samples = points_num;
 	plus = ssao_plus;
+	bias = 0.005;
+	blur = true;
 
 	Texture* ssao_texture = new Texture(Application::instance->window_width * 0.5, Application::instance->window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
-	//ssao_fbo = Texture::getGlobalFBO(ssao_texture);
+	Texture* ssao_texture_blur = new Texture(Application::instance->window_width * 0.5, Application::instance->window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+	std::vector<Texture*> textures = { ssao_texture, ssao_texture_blur };
+
 	ssao_fbo = new FBO();
-	ssao_fbo->setTexture(ssao_texture);
+	ssao_fbo->setTextures(textures);
 
 	points = generateSpherePoints(samples, 1.0f, plus);
 }
 
 Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* camera)
 {
-	//bind the texture we want to change
-	depth_buffer->bind();
+	if (!depth_buffer->filtered)
+	{
+		//bind the texture we want to change
+		depth_buffer->bind();
 
-	//disable using mipmaps
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//disable using mipmaps
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-	//enable bilinear filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		//enable bilinear filtering
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	depth_buffer->unbind();
+		depth_buffer->unbind();
+
+		depth_buffer->filtered = true;
+	}
 
 	Mesh* quad = Mesh::getQuad();
 
@@ -968,9 +985,10 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	shader->setUniform("u_normal_texture", normal_buffer, 1);
 	shader->setTexture("u_depth_texture", depth_buffer, 4);
+
 	//we need the pixel size so we can center the samples 
-	shader->setUniform("u_iRes", Vector2(1.0 / (float)depth_buffer->width,
-		1.0 / (float)depth_buffer->height));
+	shader->setUniform("u_iRes", Vector2(1.0 / (float)depth_buffer->width, 1.0 / (float)depth_buffer->height));
+
 	//we will need the viewprojection to obtain the uv in the depthtexture of any random position of our world
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
 
@@ -978,6 +996,7 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	shader->setUniform3Array("u_points", (float*)&points[0],points.size());
 	shader->setUniform("u_samples", samples);
 	shader->setUniform("u_ssao_plus", plus);
+	shader->setUniform("u_bias", bias);
 
 	//render fullscreen quad
 	quad->render(GL_TRIANGLES);
@@ -985,7 +1004,27 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	//stop rendering to the texture
 	ssao_fbo->unbind();
 
-	return ssao_fbo->color_textures[0];
+	ssao_fbo->bind();
+
+	if (blur)
+	{
+		//get the shader for SSAO (remember to create it using the atlas)
+		shader = Shader::Get("ssao_blur");
+		shader->enable();
+
+		shader->setUniform("u_ssao", ssao_fbo->color_textures[0], 0);
+
+		quad->render(GL_TRIANGLES);
+
+		shader->disable();
+	}
+
+	ssao_fbo->unbind();
+
+	if (blur)
+		return ssao_fbo->color_textures[1];
+	else
+		return ssao_fbo->color_textures[0];
 }
 
 void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h)

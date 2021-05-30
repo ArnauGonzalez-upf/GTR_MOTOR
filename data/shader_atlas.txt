@@ -15,9 +15,9 @@ gbuffers basic.vs gbuffers.fs
 deferred_multi quad.vs deferred_multi.fs
 deferred_ws basic.vs deferred_multi.fs
 ssao quad.vs ssao.fs
+ssao_blur quad.vs ssao_blur.fs
 omr quad.vs omr.fs
 hdr quad.vs hdr.fs
-deferred_alpha quad.vs 
 
 \normal_functions
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -520,7 +520,7 @@ uniform vec3 u_ambient_light;
 uniform vec3 u_emissive;
 uniform vec4 u_color;
 
-const int MAX_LIGHTS = 10;
+const int MAX_LIGHTS = 50;
 uniform int u_num_lights;
 uniform int u_shadow_count;
 
@@ -1217,6 +1217,7 @@ in vec2 v_uv;
 
 uniform int u_samples;
 uniform bool u_ssao_plus;
+uniform float u_bias;
 
 #define MAX_SAMPLES 512
 
@@ -1230,7 +1231,7 @@ uniform vec2 u_iRes;
  
 uniform vec3 u_points[MAX_SAMPLES];
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
 
 //from this github repo
 mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv)
@@ -1300,7 +1301,7 @@ void main()
     			vec4 proj = u_viewprojection * vec4(p,1.0);
     			proj.xy /= proj.w; //convert to clipspace from homogeneous
     			//apply a tiny bias to its z before converting to clip-space
-    			proj.z = (proj.z - 0.005) / proj.w;
+    			proj.z = (proj.z - u_bias) / proj.w;
     			proj.xyz = proj.xyz * 0.5 + vec3(0.5); //to [0..1]
     			//read p true depth
     			float pdepth = texture( u_depth_texture, proj.xy ).x;
@@ -1315,6 +1316,34 @@ void main()
 
 	FragColor = vec4(ao);
 }
+
+\ssao_blur.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_ssao;
+
+layout(location = 1) out vec4 FragColor;
+
+void main()
+{
+    vec2 texelSize = 1.0 / vec2(textureSize(u_ssao, 0));
+    float result = 0.0;
+    for (int x = -3; x < 3; ++x) 
+    {
+        for (int y = -3; y < 3; ++y) 
+        {
+            vec2 offset = vec2(float(x), float(y)) * texelSize;
+            result += texture(u_ssao, v_uv + offset).r;
+        }
+    }
+    result = result / (6.0 * 6.0);
+
+    FragColor = vec4(result, result, result, 1.0);	
+}
+
 
 \omr.fs
 

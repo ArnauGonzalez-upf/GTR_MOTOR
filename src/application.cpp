@@ -328,14 +328,21 @@ void Application::renderDebugGUI(void)
 			bool changed_ssao_plus = false;
 			changed_ssao_plus |= ImGui::Checkbox("SSAO+", &renderer->ssao->plus);
 
+			if (renderer->ssao->plus)
+				ImGui::Checkbox("SSAO Blur", &renderer->ssao->blur);
+
 			ImGui::SliderFloat("SSAO Factor", &renderer->ssao->intensity, 0.1f, 10.0f);
 
 			bool changed_ssao_samples = false;
 			changed_ssao_samples |= ImGui::SliderInt("SSAO Samples", &renderer->ssao->samples, 1, 500);
 
+			ImGui::SliderFloat("SSAO Bias", &renderer->ssao->bias, 0.001, 0.1);
 
 			if (changed_ssao_plus || changed_ssao_samples)
 				renderer->ssao->points = generateSpherePoints(renderer->ssao->samples, 1.0f, renderer->ssao->plus);
+
+			if (!renderer->ssao->plus)
+				renderer->ssao->blur = false;
 		}
 	}
 
@@ -460,10 +467,26 @@ void Application::onResize(int width, int height)
 
 	if (renderer->gbuffers_fbo->fbo_id != 0) {
 		renderer->gbuffers_fbo->~FBO();
-		renderer->gbuffers_fbo->create(window_width, window_height, 3, GL_RGBA, GL_HALF_FLOAT, true);
+
+		Texture* albedo = new Texture(window_width, window_height, GL_RGBA, GL_HALF_FLOAT);
+		Texture* normals = new Texture(window_width, window_height, GL_RGBA, GL_UNSIGNED_BYTE);
+		Texture* extra = new Texture(window_width, window_height, GL_RGBA, GL_HALF_FLOAT);
+		Texture* depth = new Texture(window_width, window_height, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, false);
+
+		std::vector<Texture*> text = { albedo,normals,extra };
+
+		renderer->gbuffers_fbo->setTextures(text, depth);
 	}
 
 	renderer->illumination_fbo->~FBO();
 	renderer->illumination_fbo->create(window_width, window_height, 1, GL_RGBA, GL_HALF_FLOAT, true);
+
+	Texture* ssao_texture = new Texture(window_width * 0.5, window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+	Texture* ssao_texture_blur = new Texture(window_width * 0.5, window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
+	std::vector<Texture*> textures = { ssao_texture, ssao_texture_blur };
+
+	renderer->ssao->ssao_fbo->~FBO();
+	renderer->ssao->ssao_fbo = new FBO();
+	renderer->ssao->ssao_fbo->setTextures(textures);
 }
 

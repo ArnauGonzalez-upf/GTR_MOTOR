@@ -105,6 +105,7 @@ public:
 	static FBO* global_fbo;
 
 	//a general struct to store all the information about a TGA file
+	bool filtered;
 
 	//textures manager
 	static std::map<std::string, Texture*> sTexturesLoaded;

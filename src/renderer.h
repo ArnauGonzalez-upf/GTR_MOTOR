@@ -42,8 +42,11 @@ namespace GTR {
 		int samples;
 		float intensity;
 		bool plus;
+		float bias;
+		bool blur;
 
 		FBO* ssao_fbo;
+		FBO* ssao_blur_fbo;
 
 		std::vector<Vector3> points;
 

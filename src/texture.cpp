@@ -73,6 +73,7 @@ Texture::Texture()
 	format = 0;
 	type = 0;
 	texture_type = GL_TEXTURE_2D;
+	filtered = false;
 }
 
 Texture::Texture(unsigned int width, unsigned int height, unsigned int format, unsigned int type, bool mipmaps, Uint8* data, unsigned int internal_format)
@@ -149,6 +150,7 @@ void Texture::create(unsigned int width, unsigned int height, unsigned int forma
 	this->internal_format = internal_format;
 	this->type = type;
 	this->mipmaps = mipmaps && isPowerOfTwo(width) && isPowerOfTwo(height) && format != GL_DEPTH_COMPONENT;
+	this->filtered = false;
 
 	//Delete previous texture and ensure that previous bounded texture_id is not of another texture type
 	if (this->texture_id != 0)
