@@ -1068,8 +1068,8 @@ void main()
 	float occlusion;
 	if (u_ao == true) 
 	{  
-	occlusion =  texture( u_ao_texture, uv ).r; 
-	occlusion =  pow(occlusion, u_ao_factor);
+		occlusion =  texture( u_ao_texture, uv ).r; 
+		occlusion =  pow(occlusion, u_ao_factor);
 	}
 	else { occlusion = normalbuffer.a; }
 
@@ -1146,19 +1146,16 @@ void main()
 	float HdotV = max(dot(H,V),0.0);
 	float LdotH = max(dot(L,H),0.0);
 	
-	if (u_light_eq < 3)
-	{
-		//store the light parameters
-		vec3 light_params = NdotL * u_light_color * spot_factor * att_factor * shadow_factor * u_light_intensity;
+	//store the light parameters
+	vec3 light_params = NdotL * u_light_color * spot_factor * att_factor * shadow_factor * u_light_intensity;
 		
-		if (u_light_eq == 0) 		// PHONG
-			light += light_params;
-		else				// DIRECT
-		{
+	if (u_light_eq == 0) 		// PHONG
+		light += light_params;
+	else				// DIRECT
+	{
 
-			vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, HdotV, NdotV, NdotL, u_light_eq);
-			light += direct * light_params;
-		}
+		vec3 direct = compute_direct(color.xyz, metallic, roughness, NdotH, HdotV, NdotV, NdotL, u_light_eq);
+		light += direct * light_params;
 	}
 
 	//Applying light to color

@@ -29,7 +29,8 @@ namespace GTR {
 	enum eLightEq {
 		PHONG,
 		DIRECT_LAMB,
-		DIRECT_BURLEY
+		DIRECT_BURLEY,
+		NO_EQ
 	};
 
 	class Prefab;
@@ -127,7 +128,7 @@ namespace GTR {
 		void passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h);
 
 		//
-		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera);
+		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera, int& w, int& h);
 		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
 	};
 
