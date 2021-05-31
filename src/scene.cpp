@@ -134,6 +134,9 @@ bool GTR::Scene::load(const char* filename)
 		light->light_type = POINT;
 		light->name = "pointlight" + std::to_string(i + 3);
 
+		light->cast_shadows = false;
+		light->shadow_fbo = NULL;
+
 		addEntity(light);
 	}
 
@@ -197,6 +200,8 @@ GTR::LightEntity::LightEntity()
 	camera = new Camera();
 	cast_shadows = false;
 	uvs = Vector3();
+
+	shadow_fbo = NULL;
 }
 
 void GTR::LightEntity::configure(cJSON* json)
