@@ -589,6 +589,23 @@ Texture* Texture::getGreenTexture()
 
 void Texture::copyTo(Texture* destination, Shader* shader)
 {
+	if (!destination && format == GL_DEPTH_COMPONENT && !shader)
+	{
+		glEnable(GL_DEPTH_TEST); //we need to use the depth buffer
+		glDepthFunc(GL_ALWAYS); //but ignore the test, every fragment should update the depth
+		glColorMask(false, false, false, false); //block drawing to colors
+		shader = Shader::getDefaultShader("screen_depth");
+		Mesh* quad = Mesh::getQuad();
+		shader->enable();
+		shader->setUniform("u_texture", this, 0);
+		glDisable(GL_CULL_FACE);
+		quad->render(GL_TRIANGLES);
+		glColorMask(true, true, true, true);
+		glDisable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		return;
+	}
+
 	if (!destination)
 	{
 		glDepthFunc(GL_ALWAYS);

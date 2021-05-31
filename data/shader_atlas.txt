@@ -733,6 +733,12 @@ uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D shadowmap;
 
+uniform bool u_deferred;
+uniform sampler2D u_depth_texture;
+
+uniform bool u_ao;
+uniform sampler2D u_ao_texture;
+
 out vec4 FragColor;
 
 #include "normal_functions"
@@ -741,6 +747,17 @@ out vec4 FragColor;
 
 void main()
 {	
+	/*if (u_deferred)
+	{
+		int w = 1024;
+		int h = 768;
+		vec2 text_coord = vec2(gl_FragCoord.x / 1024, gl_FragCoord.y / 768);
+		
+		float depth = texture( u_depth_texture, text_coord ).x;
+		if (depth <= gl_FragCoord.z)
+			discard;
+	}*/
+
 	vec3 light = vec3( 0.0 );
 	vec4 color = u_color;
 	vec4 emissive = vec4( u_emissive, 1.0 );
@@ -793,6 +810,15 @@ void main()
 
 	//Summing the ambient light because it always is
 	light += u_ambient_light;
+	
+	if (u_ao)
+	{	
+		int w = 1024;
+		int h = 768;
+		vec2 text_coord = vec2(gl_FragCoord.x / 1024, gl_FragCoord.y / 768);
+		occlusion = texture( u_ao_texture, text_coord ).x;
+	}
+	
 	light *= occlusion;
 	
 	//depending on the light type...
