@@ -520,7 +520,7 @@ uniform vec3 u_ambient_light;
 uniform vec3 u_emissive;
 uniform vec4 u_color;
 
-const int MAX_LIGHTS = 20;
+const int MAX_LIGHTS = 25;
 uniform int u_num_lights;
 uniform int u_shadow_count;
 
