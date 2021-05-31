@@ -39,8 +39,8 @@ Renderer::Renderer()
 
 	hdr_active = true;
 	hdr_scale = 1.0;
-	hdr_average_lum = 1.5;
-	hdr_white_balance = 0.5;
+	hdr_average_lum = 0.5;
+	hdr_white_balance = 1.25;
 	hdr_gamma = 2.2;
 
 	illumination_fbo = new FBO();
@@ -189,7 +189,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, NULL);
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
 		}
 	}
 
@@ -210,6 +210,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	hdr_shader->enable();
 	hdr_shader->setUniform("u_hdr", hdr_active);
 
+	//HDR, tone mapping and Gamma
 	if (hdr_active)
 	{
 		hdr_shader->setUniform("u_scale", hdr_scale);
@@ -218,6 +219,9 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 		float inv_gamma = 1 / hdr_gamma;
 		hdr_shader->setUniform("u_igamma", inv_gamma);
 	}
+
+	glDisable(GL_BLEND);
+
 	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
 
 
@@ -228,7 +232,14 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	//Render one light camera depth map
 	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
 	{
+		if (render_mode == DEFERRED)
+			lights.push_back(directional_light);
+		
 		LightEntity* light = lights[depth_light];
+
+		if (!light->cast_shadows)
+			return;
+
 		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
 		Shader* zshader = Shader::Get("depth");
 		zshader->enable();
@@ -310,6 +321,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	else if (light_mode == SINGLE)
 		renderToAtlas(camera);
 
+	//Render depending on the mode
 	if (render_mode == FORWARD)
 	{
 		illumination_fbo->bind();
@@ -337,7 +349,7 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scen
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, NULL);
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
 		}
 	}
 }
@@ -370,14 +382,17 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	sh = Shader::Get("deferred_multi");
 	sh->enable();
 
+	//Pass uniforms of first pass
 	passDeferredUniforms(sh, true, camera, scene, w, h);
 
+	//Pass ao if active
 	if (activate_ssao)
 	{
 		sh->setUniform("u_ao_texture", ao, 5);
 		sh->setUniform("u_ao_factor", ssao->intensity);
 	}
 
+	//If there's a directional light, render the scene with it
 	if (directional_light) {
 		sh->setUniform("u_pcf", pcf);
 		directional_light->uploadLightParams(sh, true, hdr_gamma);
@@ -385,17 +400,22 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	else
 		sh->setUniform("u_light_eq", (int)NO_EQ);
 
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
 	quad->render(GL_TRIANGLES);
 
 	sh->disable();
 
-	sh = Shader::Get("deferred_ws");
+	sh = Shader::Get("deferred_ws"); //Sphere shader
 
 	sh->enable();
 
+	//Render the scene with the second pass uniforms
 	passDeferredUniforms(sh, false, camera, scene, w, h);
 	renderMultiPassSphere(sh, camera);
 
+	//Alpha forward
 	if (!dithering) {
 		render_mode = DEFERRED_ALPHA;
 		light_mode = MULTI;
@@ -410,7 +430,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 			BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
 			//if bounding box is inside the camera frustum then the object is probably visible
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, gbuffers_fbo->depth_texture);
+				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
 		}
 		render_mode = DEFERRED;
 	}
@@ -467,7 +487,7 @@ void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, G
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, Texture* depth_text = NULL)
+void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -500,21 +520,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			if (light_mode == MULTI) { shader = Shader::Get("light_multi"); }
 			if (light_mode == SINGLE) { shader = Shader::Get("light_single"); }
 			break;
-		case SHOW_TEXTURE:
-			shader = Shader::Get("texture");
-			break;
-		case SHOW_UVS:
-			shader = Shader::Get("uvs");
-			break;
-		case SHOW_NORMALS:
-			shader = Shader::Get("normals");
-			break;
-		case SHOW_OCCLUSION:
-			shader = Shader::Get("occlusion");
-			break;
-		case SHOW_EMISSIVE:
-			shader = Shader::Get("emissive");
-			break;
 		case DEFERRED:
 			shader = Shader::Get("gbuffers");
 			break;
@@ -535,8 +540,14 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_camera_position", camera->eye);
 	shader->setUniform("u_viewmatrix", camera->view_matrix);
 	shader->setUniform("u_model", model);
-	shader->setUniform("u_color", material->color);
-	shader->setUniform("u_emissive", material->emissive_factor);
+
+	Vector4 mat_color = material->color;
+	mat_color = Vector4(pow(mat_color.x, hdr_gamma), pow(mat_color.y, hdr_gamma), pow(mat_color.z, hdr_gamma), mat_color.w);
+	shader->setUniform("u_color", mat_color);
+
+	Vector3 em_factor = material->emissive_factor;
+	em_factor = Vector3(pow(em_factor.x, hdr_gamma), pow(em_factor.y, hdr_gamma), pow(em_factor.z, hdr_gamma));
+	shader->setUniform("u_emissive", em_factor);
 
 	Vector3 ambient = scene->ambient_light;
 	ambient = Vector3(pow(ambient.x, hdr_gamma), pow(ambient.y, hdr_gamma), pow(ambient.z, hdr_gamma));
@@ -597,6 +608,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		if (lights.size() == 0) //Taking care of the "no lights" scenario
 		{
 			shader->setUniform("u_light_type", (int)NO_LIGHT);
+			shader->setUniform("u_light_eq", (int)NO_EQ);
 			mesh->render(GL_TRIANGLES);
 		}
 		else
@@ -756,7 +768,11 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 	shader->setUniform1("u_num_lights", (int)lights.size());
 	shader->setUniform("u_shadow_count", shadow_count);
 	shader->setUniform("u_pcf", pcf);
-	shader->setUniform("u_texture_atlas", atlas->depth_texture, 8);
+
+	if (lights.size() != 0)
+		shader->setUniform("u_texture_atlas", atlas->depth_texture, 8);
+	else
+		shader->setUniform("u_texture_atlas", Texture::getBlackTexture(), 8);
 
 	//render the mesh
 	mesh->render(GL_TRIANGLES);

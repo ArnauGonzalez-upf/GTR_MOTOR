@@ -195,10 +195,7 @@ GTR::LightEntity::LightEntity()
 	entity_type = LIGHT;
 
 	camera = new Camera();
-
-	shadow_fbo = new FBO();
-	int res = 1024 * pow(2, (int)Application::instance->quality);
-	shadow_fbo->setDepthOnly(res, res);
+	cast_shadows = false;
 	uvs = Vector3();
 }
 
@@ -213,10 +210,18 @@ void GTR::LightEntity::configure(cJSON* json)
 		if (type_str == "SPOT") {
 			light_type = SPOT;
 			bias = 0.03;
+
+			shadow_fbo = new FBO();
+			int res = 1024 * pow(2, (int)Application::instance->quality);
+			shadow_fbo->setDepthOnly(res, res);
 		}
 		if (type_str == "DIRECTIONAL") {
 			light_type = DIRECTIONAL;
 			bias = 0.005;
+
+			shadow_fbo = new FBO();
+			int res = 1024 * pow(2, (int)Application::instance->quality);
+			shadow_fbo->setDepthOnly(res, res);
 		}
 	}
 	if (cJSON_GetObjectItem(json, "color"))

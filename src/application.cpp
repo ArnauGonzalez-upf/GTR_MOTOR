@@ -256,10 +256,13 @@ void Application::renderDebugGUI(void)
 
 		for (int i = 0; i < renderer->lights.size(); ++i)
 		{
-			renderer->lights[i]->shadow_fbo->~FBO();
-			renderer->lights[i]->shadow_fbo = new FBO();
-			int res = 1024 * pow(2, (int)quality);
-			renderer->lights[i]->shadow_fbo->setDepthOnly(res, res);
+			if (renderer->lights[i]->light_type == GTR::SPOT || renderer->lights[i]->light_type == GTR::DIRECTIONAL)
+			{
+				renderer->lights[i]->shadow_fbo->~FBO();
+				renderer->lights[i]->shadow_fbo = new FBO();
+				int res = 1024 * pow(2, (int)quality);
+				renderer->lights[i]->shadow_fbo->setDepthOnly(res, res);
+			}
 		}
 
 		if (renderer->atlas) {
@@ -270,7 +273,7 @@ void Application::renderDebugGUI(void)
 
 	//Chaning render_mode
 	bool changed_render_mode = false;
-	changed_render_mode |= ImGui::Combo("Render Mode", (int*)&renderer->render_mode, "FORWARD\0SHOW_TEXTURE\0SHOW_UVS\0SHOW_NORMALS\0SHOW_OCCLUSION\0SHOW_EMISSIVE\0DEFERRED", 7);
+	changed_render_mode |= ImGui::Combo("Render Mode", (int*)&renderer->render_mode, "FORWARD\0DEFERRED", 2);
 	if (changed_render_mode) {
 		if (renderer->render_mode == GTR::DEFERRED)
 			renderer->light_mode = GTR::MULTI;

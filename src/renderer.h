@@ -12,11 +12,6 @@ namespace GTR {
 
 	enum eRenderMode {
 		FORWARD,
-		SHOW_TEXTURE,
-		SHOW_UVS,
-		SHOW_NORMALS,
-		SHOW_OCCLUSION,
-		SHOW_EMISSIVE,
 		DEFERRED,
 		DEFERRED_ALPHA
 	};
@@ -108,7 +103,7 @@ namespace GTR {
 		void getCallsFromNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, Texture* depth_texture);
+		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene);
 
 		//render the shadowmap
 		void renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light);
