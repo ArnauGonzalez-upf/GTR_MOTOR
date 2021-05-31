@@ -520,7 +520,7 @@ uniform vec3 u_ambient_light;
 uniform vec3 u_emissive;
 uniform vec4 u_color;
 
-const int MAX_LIGHTS = 50;
+const int MAX_LIGHTS = 20;
 uniform int u_num_lights;
 uniform int u_shadow_count;
 
@@ -747,16 +747,6 @@ out vec4 FragColor;
 
 void main()
 {	
-	/*if (u_deferred)
-	{
-		int w = 1024;
-		int h = 768;
-		vec2 text_coord = vec2(gl_FragCoord.x / 1024, gl_FragCoord.y / 768);
-		
-		float depth = texture( u_depth_texture, text_coord ).x;
-		if (depth <= gl_FragCoord.z)
-			discard;
-	}*/
 
 	vec3 light = vec3( 0.0 );
 	vec4 color = u_color;
@@ -780,7 +770,6 @@ void main()
 	if (roughness == 1.0)
 		roughness = u_roughness;
 
-	float occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	vec3 normal_pixel = texture( u_texture_normals, v_uv ).xyz;
 
 	//Check blending
@@ -811,13 +800,17 @@ void main()
 	//Summing the ambient light because it always is
 	light += u_ambient_light;
 	
+	float occlusion;
 	if (u_ao)
 	{	
 		int w = 1024;
 		int h = 768;
 		vec2 text_coord = vec2(gl_FragCoord.x / 1024, gl_FragCoord.y / 768);
 		occlusion = texture( u_ao_texture, text_coord ).x;
+
 	}
+	else
+		occlusion =  texture( u_texture_metallic_roughness, v_uv ).x;
 	
 	light *= occlusion;
 	

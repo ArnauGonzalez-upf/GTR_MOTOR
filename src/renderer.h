@@ -96,10 +96,10 @@ namespace GTR {
 		//update the light viewproj matrix and parameters
 		void updateLight(LightEntity* light, Camera* camera);
 
-		void renderToFBO(GTR::Scene* scene, Camera* camera);
+		void renderToFBO(Scene* scene, Camera* camera);
 
 		//renders several elements of the scene
-		void renderScene(GTR::Scene* scene, Camera* camera);
+		void renderScene(Scene* scene, Camera* camera);
 
 		//to render a whole prefab (with all its nodes)
 		void getCallsFromPrefab(const Matrix44& model, GTR::Prefab* prefab, Camera* camera);
@@ -108,7 +108,7 @@ namespace GTR {
 		void getCallsFromNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Texture* depth_texture);
+		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, Texture* depth_texture);
 
 		//render the shadowmap
 		void renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light);
@@ -124,12 +124,12 @@ namespace GTR {
 		void renderSinglePass(Shader* shader, Mesh* mesh);
 
 		//renderers
-		void renderForward(std::vector<RenderCall> calls, Camera* camera);
-		void renderDeferred(std::vector<RenderCall> calls, Camera* camera);
-		void passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h);
+		void renderForward(std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, Scene* scene, int& w, int& h);
 
 		//
-		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera, int& w, int& h);
+		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h);
 		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
 	};
 

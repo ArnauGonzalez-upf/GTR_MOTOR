@@ -1,64 +1,64 @@
 ﻿  renderer.cpp
-D:\Arnau\Documents\GTR_MOTOR\src\extra\cJSON.h(104,1): warning C4099: 'cJSON': nombre de tipo visto anteriormente usando 'class' ahora se ve usando 'struct'
-D:\Arnau\Documents\GTR_MOTOR\src\extra\cJSON.h(103): message : vea la declaración de 'cJSON'
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(44,17): warning C4305: '=': truncamiento de 'double' a 'float'
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(85,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(127,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(184,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(259,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(297,21): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(332,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(404,21): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(635,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(673,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(723,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(735,24): warning C4244: '=': conversión de 'double' a 'float'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(779,10): warning C4244: 'inicializando': conversión de 'double' a 'int'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(797,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(807,13): warning C4244: 'inicializando': conversión de 'double' a 'float'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(819,21): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(870,20): warning C4018: '<': no coinciden signed/unsigned
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(888,55): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(888,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(906,40): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(906,26): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(909,61): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(909,47): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(909,34): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(909,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(912,51): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(912,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(912,24): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(915,50): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(915,36): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(915,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(931,40): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(931,26): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(934,61): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(934,47): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(934,34): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(934,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(937,50): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(937,36): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(937,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(940,51): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(940,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(940,24): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(966,14): warning C4305: '=': truncamiento de 'double' a 'float'
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(969,118): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(969,74): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(970,123): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(970,79): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(1014,77): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(1014,43): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(1067,55): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
-D:\Arnau\Documents\GTR_MOTOR\src\renderer.cpp(1067,39): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\extra\cJSON.h(104,1): warning C4099: 'cJSON': nombre de tipo visto anteriormente usando 'class' ahora se ve usando 'struct'
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\extra\cJSON.h(103): message : vea la declaración de 'cJSON'
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(44,17): warning C4305: '=': truncamiento de 'double' a 'float'
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(85,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(127,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(184,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(259,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(297,21): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(332,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(404,21): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(634,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(672,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(722,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(734,24): warning C4244: '=': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(778,10): warning C4244: 'inicializando': conversión de 'double' a 'int'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(796,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(806,13): warning C4244: 'inicializando': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(818,21): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(869,20): warning C4018: '<': no coinciden signed/unsigned
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(887,55): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(887,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(905,40): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(905,26): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(908,61): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(908,47): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(908,34): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(908,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(911,51): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(911,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(911,24): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(914,50): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(914,36): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(914,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(930,40): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(930,26): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(933,61): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(933,47): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(933,34): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(933,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(936,50): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(936,36): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(936,20): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(939,51): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(939,37): warning C4244: 'argumento': conversión de 'double' a 'GLsizei'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(939,24): warning C4244: 'argumento': conversión de 'double' a 'GLint'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(965,14): warning C4305: '=': truncamiento de 'double' a 'float'
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(968,118): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(968,74): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(969,123): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(969,79): warning C4244: 'argumento': conversión de 'double' a 'unsigned int'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(1013,77): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(1013,43): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(1061,55): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
+D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\src\renderer.cpp(1061,39): warning C4244: 'argumento': conversión de 'double' a 'float'; posible pérdida de datos
      Creando biblioteca ..\..\framework.lib y objeto ..\..\framework.exp
 LINK : warning LNK4098: la biblioteca predeterminada'LIBCMT' entra en conflicto con otras bibliotecas; use la biblioteca /NODEFAULTLIB:biblioteca
   Generando código
-  41 of 4325 functions ( 0.9%) were compiled, the rest were copied from previous compilation.
+  2 of 4325 functions (<0.1%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    62 functions had inline decision re-evaluated but remain unchanged
+    52 functions had inline decision re-evaluated but remain unchanged
   Generación de código finalizada
 LINK : warning LNK4286: "___glewDeleteBuffers" importa el símbolo "glew32s.lib(glew.obj)" definido en "imgui_impl_opengl3.obj"
 LINK : warning LNK4286: "___glewLinkProgram" importa el símbolo "glew32s.lib(glew.obj)" definido en "imgui_impl_opengl3.obj"
@@ -93,5 +93,5 @@ LINK : warning LNK4286: "___glewUseProgram" importa el símbolo "glew32s.lib(gle
 LINK : warning LNK4286: "___glewBindSampler" importa el símbolo "glew32s.lib(glew.obj)" definido en "imgui_impl_opengl3.obj"
 LINK : warning LNK4286: "___glewBindVertexArray" importa el símbolo "glew32s.lib(glew.obj)" definido en "imgui_impl_opengl3.obj"
 LINK : warning LNK4286: "___glewEnableVertexAttribArray" importa el símbolo "glew32s.lib(glew.obj)" definido en "imgui_impl_opengl3.obj"
-glew32s.lib(glew.obj) : warning LNK4099: no se encontró PDB 'vc120.pdb' con 'glew32s.lib(glew.obj)' o en 'D:\Arnau\Documents\GTR_MOTOR\vc120.pdb'; se vinculará el objeto sin tener en cuenta información de depuración
-  visualstudio.vcxproj -> D:\Arnau\Documents\GTR_MOTOR\framework.exe
+glew32s.lib(glew.obj) : warning LNK4099: no se encontró PDB 'vc120.pdb' con 'glew32s.lib(glew.obj)' o en 'D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\vc120.pdb'; se vinculará el objeto sin tener en cuenta información de depuración
+  visualstudio.vcxproj -> D:\UNIVERSITY\4\3\RTGx\GTR_MOTOR\framework.exe

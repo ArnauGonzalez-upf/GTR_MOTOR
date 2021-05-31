@@ -141,7 +141,7 @@ void Renderer::shadowMapping(LightEntity* light, Camera* camera)
 	glColorMask(true, true, true, true);
 }
 
-void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, int& w, int& h)
+void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h)
 {
 	if (gbuffers_fbo->fbo_id == 0) {
 		Texture* albedo = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
@@ -189,7 +189,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, int
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, NULL);
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, NULL);
 		}
 	}
 
@@ -200,7 +200,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, int
 	glDisable(GL_BLEND);
 }
 
-void GTR::Renderer::renderToFBO(GTR::Scene* scene, Camera* camera)
+void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 {
 	renderScene(scene, camera);
 
@@ -244,7 +244,7 @@ void GTR::Renderer::renderToFBO(GTR::Scene* scene, Camera* camera)
 		renderAtlas();
 }
 
-void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
+void Renderer::renderScene(Scene* scene, Camera* camera)
 {
 	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
 	lights.clear(); //Clearing lights vector
@@ -313,16 +313,16 @@ void Renderer::renderScene(GTR::Scene* scene, Camera* camera)
 	if (render_mode == FORWARD)
 	{
 		illumination_fbo->bind();
-		renderForward(calls, camera);
+		renderForward(calls, camera, scene);
 		illumination_fbo->unbind();
 		glDisable(GL_BLEND);
 		glDisable(GL_DEPTH_TEST);
 	}
 	else if (render_mode == DEFERRED)
-		renderDeferred(calls, camera);
+		renderDeferred(calls, camera, scene);
 }
 
-void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
+void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
 {
 	Vector3 bg_color = Scene::instance->background_color;
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
@@ -337,17 +337,17 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera)
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, NULL);
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, NULL);
 		}
 	}
 }
 
-void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
+void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
 {
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
-	renderGBuffers(calls, camera, w, h);
+	renderGBuffers(calls, camera, scene, w, h);
 
 	Texture* ao = NULL;
 	if (activate_ssao)
@@ -370,7 +370,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 	sh = Shader::Get("deferred_multi");
 	sh->enable();
 
-	passDeferredUniforms(sh, true, camera, w, h);
+	passDeferredUniforms(sh, true, camera, scene, w, h);
 
 	if (activate_ssao)
 	{
@@ -382,18 +382,18 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 		sh->setUniform("u_pcf", pcf);
 		directional_light->uploadLightParams(sh, true, hdr_gamma);
 	}
-	else { sh->setUniform("u_light_eq", (int)NO_EQ); }
+	else
+		sh->setUniform("u_light_eq", (int)NO_EQ);
 
 	quad->render(GL_TRIANGLES);
 
 	sh->disable();
 
-	//renderMultiPass(quad, NULL, sh);
 	sh = Shader::Get("deferred_ws");
 
 	sh->enable();
 
-	passDeferredUniforms(sh, true, camera, w, h);
+	passDeferredUniforms(sh, false, camera, scene, w, h);
 	renderMultiPassSphere(sh, camera);
 
 	if (!dithering) {
@@ -410,7 +410,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera)
 			BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
 			//if bounding box is inside the camera frustum then the object is probably visible
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, gbuffers_fbo->depth_texture);
+				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, gbuffers_fbo->depth_texture);
 		}
 		render_mode = DEFERRED;
 	}
@@ -467,7 +467,7 @@ void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, G
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Texture* depth_text = NULL)
+void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, Texture* depth_text = NULL)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -538,7 +538,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_color", material->color);
 	shader->setUniform("u_emissive", material->emissive_factor);
 
-	Vector3 ambient = GTR::Scene::instance->ambient_light;
+	Vector3 ambient = scene->ambient_light;
 	ambient = Vector3(pow(ambient.x, hdr_gamma), pow(ambient.y, hdr_gamma), pow(ambient.z, hdr_gamma));
 
 	shader->setVector3("u_ambient_light", ambient);
@@ -574,8 +574,6 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			Texture* ao = ssao->ssao_fbo->color_textures[0];
 			shader->setUniform("u_ao_texture", ao, 5);
 		}
-
-		glEnable(GL_DEPTH_TEST);
 	}
 
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
@@ -630,6 +628,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 {
 	//allow to render pixels that have the same depth as the one in the depth buffer
+	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
 	for (int i = 0; i < lights.size(); ++i)
@@ -1025,11 +1024,6 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 	//render fullscreen quad
 	quad->render(GL_TRIANGLES);
 
-	//stop rendering to the texture
-	ssao_fbo->unbind();
-
-	ssao_fbo->bind();
-
 	if (blur)
 	{
 		//get the shader for SSAO (remember to create it using the atlas)
@@ -1051,7 +1045,7 @@ Texture* SSAO::apply(Texture* normal_buffer, Texture* depth_buffer, Camera* came
 		return ssao_fbo->color_textures[0];
 }
 
-void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, int& w, int& h)
+void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, Scene* scene, int& w, int& h)
 {
 	//pass the gbuffers to the shader
 	sh->setUniform("u_color_texture", gbuffers_fbo->color_textures[0], 0);
@@ -1069,7 +1063,7 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 	//Light uniforms
 	if (first_pass)
 	{
-		Vector3 ambient = GTR::Scene::instance->ambient_light;
+		Vector3 ambient = scene->ambient_light;
 		ambient = Vector3(pow(ambient.x, hdr_gamma), pow(ambient.y, hdr_gamma), pow(ambient.z, hdr_gamma));
 
 		sh->setVector3("u_ambient_light", ambient);
