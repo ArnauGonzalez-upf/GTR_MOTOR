@@ -29,6 +29,20 @@ namespace GTR {
 		NO_EQ
 	};
 
+	//the struct that holds one probe coeffs
+	struct SphericalHarmonics {
+		Vector3 coeffs[9];
+	};
+
+	//struct to store probes
+	struct sProbe {
+		Vector3 pos; //where is located
+		Vector3 local; //its ijk pos in the matrix
+		int index; //its index in the linear array
+		SphericalHarmonics sh; //coeffs
+	};
+
+
 	class Prefab;
 	class Material;
 	class RenderCall;
@@ -86,6 +100,7 @@ namespace GTR {
 		FBO* atlas;
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
+		FBO* irr_fbo;
 		SSAO* ssao;
 
 		//update the light viewproj matrix and parameters
@@ -126,6 +141,11 @@ namespace GTR {
 		//
 		void renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h);
 		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
+
+		//irradiance
+		void renderProbe(Vector3 pos, float size, float* coeffs);
+		void renderToProbe(sProbe p, std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void updatecoeffs(float hdr[3], float domega, sProbe p);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

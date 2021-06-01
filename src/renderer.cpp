@@ -1,5 +1,4 @@
 #include "renderer.h"
-
 #include "camera.h"
 #include "shader.h"
 #include "mesh.h"
@@ -10,6 +9,7 @@
 #include "scene.h"
 #include "extra/hdre.h"
 #include "rendercall.h"
+#include "sphericalharmonics.h"
 #include <iostream>
 #include <algorithm>
 #include <vector>
@@ -24,7 +24,7 @@ Renderer::Renderer()
 	light_eq = eLightEq::DIRECT_BURLEY;
 	pcf = false;
 	depth_viewport = false;
-	dithering = true;
+	dithering = false;
 	depth_light = 0;
 
 	gbuffers_fbo = new FBO();
@@ -46,9 +46,10 @@ Renderer::Renderer()
 	illumination_fbo = new FBO();
 	illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
 			1,            //one textures
-			GL_RGB,       //four channels
+			GL_RGBA,       //four channels
 			GL_HALF_FLOAT,//half float
 			true);        //add depth_texture)
+	irr_fbo = new FBO();
 }
 
 //renders all the prefab
@@ -420,7 +421,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		render_mode = DEFERRED_ALPHA;
 		light_mode = MULTI;
 
-		lights.push_back(directional_light);
+		if (directional_light)
+			lights.push_back(directional_light);
+
 		for (int i = 0; i < calls.size(); ++i)
 		{
 			if (calls[i].material->alpha_mode != BLEND)
@@ -643,6 +646,8 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
 
+	shader->setUniform("u_pcf", pcf);
+
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
@@ -678,6 +683,7 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 	sh->setUniform("u_back", false);
 	sh->setUniform("u_light_eq", light_eq);
 	sh->setUniform("u_camera_position", camera->eye);
+	sh->setUniform("u_pcf", pcf);
 
 	Mesh* sphere = Mesh::Get("data/meshes/sphere.obj", false);
 
@@ -769,7 +775,7 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 	shader->setUniform("u_shadow_count", shadow_count);
 	shader->setUniform("u_pcf", pcf);
 
-	if (lights.size() != 0)
+	if (shadow_count != 0)
 		shader->setUniform("u_texture_atlas", atlas->depth_texture, 8);
 	else
 		shader->setUniform("u_texture_atlas", Texture::getBlackTexture(), 8);
@@ -792,6 +798,7 @@ void Renderer::renderToAtlas(Camera* camera) {
 	shader->enable();
 
 	int res = 1024 * pow(2, (int)Application::instance->quality); // resolution of texture (1:1 aspect ratio)
+	shadow_count = 4;
 	//first time we create the FBO
 	if (atlas == NULL)
 	{
@@ -1098,3 +1105,89 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 	sh->setUniform("u_camera_position", camera->eye);
 	sh->setUniform("u_gamma", hdr_gamma);
 }
+
+void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
+{
+	Camera* camera = Camera::current;
+	Shader* shader = Shader::Get("probe");
+	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj",false);
+
+	glEnable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
+
+	Matrix44 model;
+	model.setTranslation(pos.x, pos.y, pos.z);
+	model.scale(size, size, size);
+
+	shader->enable();
+	shader->setUniform("u_viewprojection",camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_model", model);
+	shader->setUniform3Array("u_coeffs", coeffs, 9);
+
+	mesh->render(GL_TRIANGLES);
+}
+
+//void Renderer::renderToProbe(sProbe p, std::vector<RenderCall> calls, Camera* camera, Scene* scene) {
+//
+//	FloatImage images[6]; //here we will store the six views
+//
+//	Camera cam;
+//	//set the fov to 90 and the aspect to 1
+//	cam.setPerspective(90, 1, 0.1, 1000);
+//
+//	for (int i = 0; i < 6; ++i) //for every cubemap face
+//	{
+//		//compute camera orientation using defined vectors
+//		Vector3 eye = p.pos;
+//		Vector3 front = cubemapFaceNormals[i][2];
+//		Vector3 center = p.pos + front;
+//		Vector3 up = cubemapFaceNormals[i][1];
+//		cam.lookAt(eye, center, up);
+//		cam.enable();
+//
+//		//render the scene from this point of view
+//		irr_fbo->bind();
+//		renderForward(calls, camera, scene);
+//		irr_fbo->unbind();
+//
+//		//read the pixels back and store in a FloatImage
+//		images[i].fromTexture(irr_fbo->color_textures[0]);
+//	}
+//
+//	//compute the coefficients given the six images
+//	p.sh = computeSH(images);
+//}
+
+//void updatecoeffs(float hdr[3], float domega, float x, float y, float z)
+//{
+//	for (int col = 0; col < 3; col++) { //for every color channel
+//		float c; // A different constant for each coefficient 
+//
+//		// L_{00}.  Note that Y_{00} = 0.282095 
+//		c = 0.282095;
+//		coeffs[0][col] += hdr[col] * c * domega;
+//
+//		// L_{1m}. -1 <= m <= 1.  The linear terms 
+//		c = 0.488603;
+//		coeffs[1][col] += hdr[col] * (c * y) * domega;   // Y_{1-1} = 0.488603 y
+//		coeffs[2][col] += hdr[col] * (c * z) * domega;   // Y_{10}  = 0.488603 z
+//		coeffs[3][col] += hdr[col] * (c * x) * domega;   // Y_{11}  = 0.488603 x
+//
+//		// The Quadratic terms, L_{2m} -2 <= m <= 2 **********
+//		// First, L_{2-2}, L_{2-1}, L_{21} corresponding to xy,yz,xz 
+//		c = 1.092548;
+//		coeffs[4][col] += hdr[col] * (c * x * y) * domega; // Y_{2-2} = 1.092548 xy
+//		coeffs[5][col] += hdr[col] * (c * y * z) * domega; // Y_{2-1} = 1.092548 yz
+//		coeffs[7][col] += hdr[col] * (c * x * z) * domega; // Y_{21}  = 1.092548 xz
+//
+//		// L_{20}.  Note that Y_{20} = 0.315392 (3z^2 - 1) 
+//		c = 0.315392;
+//		coeffs[6][col] += hdr[col] * (c * (3 * z * z - 1)) * domega;
+//
+//		// L_{22}.  Note that Y_{22} = 0.546274 (x^2 - y^2) 
+//		c = 0.546274;
+//		coeffs[8][col] += hdr[col] * (c * (x * x - y * y)) * domega;
+//	}
+//}

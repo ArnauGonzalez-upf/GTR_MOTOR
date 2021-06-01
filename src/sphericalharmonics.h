@@ -9,4 +9,4 @@ struct SphericalHarmonics {
 	Vector3 coeffs[9];
 };
 
-SphericalHarmonics computeSH( FloatImage images[], bool degamma = false);
+SphericalHarmonics computeSH(FloatImage images[], bool degamma = false);
