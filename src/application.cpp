@@ -399,6 +399,7 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_F6: scene->clear(); scene->load(scene->filename.c_str()); selected_entity = NULL;  break;
 		case SDLK_2: renderer->show_gbuffers = (renderer->show_gbuffers + 1) % 2; break;
 		case SDLK_3: renderer->show_omr = !renderer->show_omr; break;
+		case SDLK_4: renderer->update_irradiance = true; break;
 	}
 }
 

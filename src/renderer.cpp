@@ -23,26 +23,25 @@ Renderer::Renderer()
 	render_mode = eRenderMode::DEFERRED;
 	light_mode = eLightMode::MULTI;
 	light_eq = eLightEq::DIRECT_BURLEY;
-	pcf = false;
-	depth_viewport = false;
-	dithering = false;
+
 	depth_light = 0;
-
-	gbuffers_fbo = new FBO();
-	atlas = NULL;
-
-	show_gbuffers = false;
-
-	activate_ssao = true;
-	ssao = new SSAO(64, true);
-
-	show_omr = false;
-
-	hdr_active = true;
 	hdr_scale = 1.0;
 	hdr_average_lum = 0.5;
 	hdr_white_balance = 1.25;
 	hdr_gamma = 2.2;
+
+	show_omr = false;
+	pcf = false;
+	depth_viewport = false;
+	dithering = false;
+	update_irradiance = false;
+	hdr_active = true;
+	show_gbuffers = false;
+	activate_ssao = true;
+
+	gbuffers_fbo = new FBO();
+	atlas = NULL;
+	ssao = new SSAO(64, true);
 
 	illumination_fbo = new FBO();
 	illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
@@ -53,6 +52,9 @@ Renderer::Renderer()
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
+	memset(&probe, 0, sizeof(probe));
+	probe.sh.coeffs[0].set(1, 0, 0);
+	probe.sh.coeffs[1].set(0, 1, 0);
 }
 
 //renders all the prefab
@@ -340,7 +342,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 
 void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
 {
-	Vector3 bg_color = Scene::instance->background_color;
+	Vector3 bg_color = scene->background_color;
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -441,10 +443,12 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		render_mode = DEFERRED;
 	}
 
-
-	extractProbe(probe, calls, camera, scene);
+	if (update_irradiance) {
+		illumination_fbo->unbind();
+		extractProbe(probe, calls, scene);
+		illumination_fbo->bind();
+	}
 	renderProbe(Vector3(0, 20, 0), 2.0, probe.sh.coeffs[0].v);
-
 	illumination_fbo->unbind();
 }
 
@@ -1136,7 +1140,7 @@ void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
 	mesh->render(GL_TRIANGLES);
 }
 
-void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* camera, Scene* scene) {
+void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* scene) {
 
 	FloatImage images[6]; //here we will store the six views
 
@@ -1155,8 +1159,10 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* ca
 		cam.enable();
 
 		//render the scene from this point of view
-		irr_fbo->bind(); 
-		renderForward(calls, camera, scene);
+		irr_fbo->bind();
+		render_mode = FORWARD;
+		renderForward(calls, &cam, scene);
+		render_mode = DEFERRED;
 		irr_fbo->unbind();
 
 		//read the pixels back and store in a FloatImage
@@ -1164,12 +1170,8 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* ca
 	}
 
 	//compute the coefficients given the six images
-	p.sh = computeSH(images);
-}
-
-void GTR::Renderer::updateIrranceCache(GTR::Scene* scene, Camera* camera)
-{
-	extractProbe(probe, calls,camera, scene);
+	p.sh = computeSH(images, false);
+	update_irradiance = false;
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)

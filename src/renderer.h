@@ -77,11 +77,12 @@ namespace GTR {
 		bool show_gbuffers;
 		bool show_omr; // to show only AO in material properties
 		bool activate_ssao; // to activate generating AO instead of using the texture
+		bool hdr_active;
+		bool update_irradiance;
 
 		int depth_light;
 		int shadow_count; //counter for shadows.
 
-		bool hdr_active;
 		float hdr_scale;
 		float hdr_average_lum;
 		float hdr_white_balance;
@@ -140,10 +141,9 @@ namespace GTR {
 
 		//irradiance
 		void renderProbe(Vector3 pos, float size, float* coeffs);
-		void extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* scene);
 		void updatecoeffs(float hdr[3], float domega, sProbe p);
 
-		void updateIrranceCache(GTR::Scene* scene, Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);
