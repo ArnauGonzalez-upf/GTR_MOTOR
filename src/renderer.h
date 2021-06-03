@@ -4,6 +4,7 @@
 #include "scene.h"
 #include "fbo.h"
 #include "application.h"
+#include "sphericalharmonics.h"
 
 //forward declarations
 class Camera;
@@ -27,11 +28,6 @@ namespace GTR {
 		DIRECT_LAMB,
 		DIRECT_BURLEY,
 		NO_EQ
-	};
-
-	//the struct that holds one probe coeffs
-	struct SphericalHarmonics {
-		Vector3 coeffs[9];
 	};
 
 	//struct to store probes
@@ -144,8 +140,10 @@ namespace GTR {
 
 		//irradiance
 		void renderProbe(Vector3 pos, float size, float* coeffs);
-		void renderToProbe(sProbe p, std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* camera, Scene* scene);
 		void updatecoeffs(float hdr[3], float domega, sProbe p);
+
+		void updateIrranceCache(GTR::Scene* scene, Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

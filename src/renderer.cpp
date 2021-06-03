@@ -9,13 +9,14 @@
 #include "scene.h"
 #include "extra/hdre.h"
 #include "rendercall.h"
-#include "sphericalharmonics.h"
 #include <iostream>
 #include <algorithm>
 #include <vector>
 #include "math.h"
 
 using namespace GTR;
+
+sProbe probe;
 
 Renderer::Renderer()
 {
@@ -49,7 +50,9 @@ Renderer::Renderer()
 			GL_RGBA,       //four channels
 			GL_HALF_FLOAT,//half float
 			true);        //add depth_texture)
+
 	irr_fbo = new FBO();
+	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
 }
 
 //renders all the prefab
@@ -437,6 +440,10 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		}
 		render_mode = DEFERRED;
 	}
+
+
+	extractProbe(probe, calls, camera, scene);
+	renderProbe(Vector3(0, 20, 0), 2.0, probe.sh.coeffs[0].v);
 
 	illumination_fbo->unbind();
 }
@@ -1129,36 +1136,41 @@ void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
 	mesh->render(GL_TRIANGLES);
 }
 
-//void Renderer::renderToProbe(sProbe p, std::vector<RenderCall> calls, Camera* camera, Scene* scene) {
-//
-//	FloatImage images[6]; //here we will store the six views
-//
-//	Camera cam;
-//	//set the fov to 90 and the aspect to 1
-//	cam.setPerspective(90, 1, 0.1, 1000);
-//
-//	for (int i = 0; i < 6; ++i) //for every cubemap face
-//	{
-//		//compute camera orientation using defined vectors
-//		Vector3 eye = p.pos;
-//		Vector3 front = cubemapFaceNormals[i][2];
-//		Vector3 center = p.pos + front;
-//		Vector3 up = cubemapFaceNormals[i][1];
-//		cam.lookAt(eye, center, up);
-//		cam.enable();
-//
-//		//render the scene from this point of view
-//		irr_fbo->bind();
-//		renderForward(calls, camera, scene);
-//		irr_fbo->unbind();
-//
-//		//read the pixels back and store in a FloatImage
-//		images[i].fromTexture(irr_fbo->color_textures[0]);
-//	}
-//
-//	//compute the coefficients given the six images
-//	p.sh = computeSH(images);
-//}
+void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Camera* camera, Scene* scene) {
+
+	FloatImage images[6]; //here we will store the six views
+
+	Camera cam;
+	//set the fov to 90 and the aspect to 1
+	cam.setPerspective(90, 1, 0.1, 1000);
+
+	for (int i = 0; i < 6; ++i) //for every cubemap face
+	{
+		//compute camera orientation using defined vectors
+		Vector3 eye = p.pos;
+		Vector3 front = cubemapFaceNormals[i][2];
+		Vector3 center = p.pos + front;
+		Vector3 up = cubemapFaceNormals[i][1];
+		cam.lookAt(eye, center, up);
+		cam.enable();
+
+		//render the scene from this point of view
+		irr_fbo->bind(); 
+		renderForward(calls, camera, scene);
+		irr_fbo->unbind();
+
+		//read the pixels back and store in a FloatImage
+		images[i].fromTexture(irr_fbo->color_textures[0]);
+	}
+
+	//compute the coefficients given the six images
+	p.sh = computeSH(images);
+}
+
+void GTR::Renderer::updateIrranceCache(GTR::Scene* scene, Camera* camera)
+{
+	extractProbe(probe, calls,camera, scene);
+}
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)
 //{
