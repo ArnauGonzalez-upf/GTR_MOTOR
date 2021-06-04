@@ -54,6 +54,7 @@ Renderer::Renderer()
 	memset(&probe, 0, sizeof(probe));
 	probe.sh.coeffs[0].set(1, 0, 0);
 	probe.sh.coeffs[1].set(0, 1, 0);
+	probe.pos.set(0, 20, 0);
 }
 
 //renders all the prefab
@@ -122,32 +123,6 @@ void Renderer::updateLight(LightEntity* light, Camera* camera)
 	}
 }
 
-void Renderer::shadowMapping(LightEntity* light, Camera* camera)
-{
-	updateLight(light, camera);
-
-	//Bind to render inside a texture
-	light->shadow_fbo->bind();
-	glColorMask(false, false, false, false);
-	glClear(GL_DEPTH_BUFFER_BIT);
-
-	for (int i = 0; i < calls.size(); ++i)
-	{
-		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
-		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
-
-		//if bounding box is inside the camera frustum then the object is probably visible
-		if (light->camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-		{
-			renderMeshWithMaterialShadow(calls[i].model, calls[i].mesh, calls[i].material, light);
-		}
-	}
-
-	//disable it to render back to the screen
-	light->shadow_fbo->unbind();
-	glColorMask(true, true, true, true);
-}
-
 void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h)
 {
 	if (gbuffers_fbo->fbo_id == 0) {
@@ -195,9 +170,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
-		}
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, render_mode);
 	}
 
 	//stop rendering to the gbuffers
@@ -232,48 +205,23 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
 	//irr_fbo->color_textures[0]->toViewport();
 
-	if (render_mode == DEFERRED && show_gbuffers) {
+	if (render_mode == DEFERRED && show_gbuffers)
 		showGbuffers(gbuffers_fbo, camera);
-	}
-
-	//Render one light camera depth map
-	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
-	{
-		if (render_mode == DEFERRED)
-			lights.push_back(directional_light);
-		
-		LightEntity* light = lights[depth_light];
-
-		if (!light->cast_shadows)
-			return;
-
-		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
-		Shader* zshader = Shader::Get("depth");
-		zshader->enable();
-
-		//Passing uniforms
-		if (light->light_type == DIRECTIONAL) { zshader->setUniform("u_cam_type", 0); }
-		else { zshader->setUniform("u_cam_type", 1); }
-		zshader->setUniform("u_camera_nearfar", Vector2(light->camera->near_plane, light->camera->far_plane));
-
-		light->shadow_fbo->depth_texture->toViewport(zshader);
-	}
-	if (light_mode == SINGLE && depth_viewport && shadow_count > 0)
-		renderAtlas();
+	
+	renderShadowmaps();
 }
 
-void Renderer::renderScene(Scene* scene, Camera* camera)
+void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefab, bool fetch_light)
 {
-	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
-	lights.clear(); //Clearing lights vector
-	calls.clear(); //Cleaning rendercalls vector
-	directional_light = NULL;
-	shadow_count = 0; //resetting counter of shadows
-
-	// Clear the color and the depth buffer
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	checkGLErrors();
-
+	//if we want to fetch the calls (lights), clear the array of calls (lights) first
+	if (fetch_prefab)
+		calls.clear();
+	if (fetch_light)
+	{
+		directional_light = NULL;
+		shadow_count = 0;
+		lights.clear();
+	}
 	for (int i = 0; i < scene->entities.size(); ++i)
 	{
 		BaseEntity* ent = scene->entities[i];
@@ -281,14 +229,14 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 			continue;
 
 		//is a prefab!
-		if (ent->entity_type == PREFAB)
+		if (ent->entity_type == PREFAB && fetch_prefab)
 		{
 			PrefabEntity* pent = (GTR::PrefabEntity*)ent;
 			if (pent->prefab)
 				getCallsFromPrefab(ent->model, pent->prefab, camera);
 		}
 
-		if (ent->entity_type == LIGHT)
+		if (ent->entity_type == LIGHT && fetch_light)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
 
@@ -297,7 +245,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 				render_mode == DEFERRED ? directional_light = light : lights.push_back(light);
 				shadow_count++;
 			}
-			else if (light->lightBounding(camera)) 
+			else if (light->lightBounding(camera))
 			{
 				if (light->light_type != POINT)
 					shadow_count++;
@@ -307,7 +255,20 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	}
 
 	//Sorting rendercalls
-	std::sort(calls.begin(), calls.end());
+	if (fetch_prefab) 
+		std::sort(calls.begin(), calls.end());
+
+}
+
+void Renderer::renderScene(Scene* scene, Camera* camera)
+{
+	glClearColor(scene->background_color.x, scene->background_color.y, scene->background_color.z, 1.0);
+
+	// Clear the color and the depth buffer
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	checkGLErrors();
+
+	fetchSceneEntities(scene, camera, true, true);
 
 	//Calculate the shadowmaps
 	if (light_mode == MULTI) 
@@ -332,7 +293,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	if (render_mode == FORWARD)
 	{
 		illumination_fbo->bind();
-		renderForward(calls, camera, scene);
+		renderCalls(calls, camera, scene, render_mode);
 		illumination_fbo->unbind();
 		glDisable(GL_BLEND);
 		glDisable(GL_DEPTH_TEST);
@@ -341,7 +302,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 		renderDeferred(calls, camera, scene);
 }
 
-void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
+void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene* scene, eRenderMode pipeline)
 {
 	Vector3 bg_color = scene->background_color;
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
@@ -355,12 +316,8 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scen
 
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-		{
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
-		}
+			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, pipeline);
 	}
-
-	//renderProbe(Vector3(0, 25, 0), 2.0, probe.sh.coeffs[0].v);
 }
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
@@ -426,37 +383,33 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 
 	//Alpha forward
 	if (!dithering) {
-		render_mode = DEFERRED_ALPHA;
-		light_mode = MULTI;
 
 		if (directional_light)
 			lights.push_back(directional_light);
 
 		for (int i = 0; i < calls.size(); ++i)
 		{
-			if (calls[i].material->alpha_mode != BLEND)
+			if (calls[i].material->alpha_mode == NO_ALPHA)
 				continue;
 
 			//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
 			BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
 			//if bounding box is inside the camera frustum then the object is probably visible
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
+				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, DEFERRED_ALPHA);
 		}
-		render_mode = DEFERRED;
 	}
 
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 
-	renderProbe(Vector3(0, 25, 0), 2.0, probe.sh.coeffs[0].v);
+	renderProbe(probe.pos, 2.0, probe.sh.coeffs[0].v);
 
 	illumination_fbo->unbind();
 }
 
 void Renderer::updateProbes(Scene* scene) 
 {
-	//memset(&probe, 0, sizeof(probe));
 	extractProbe(probe, calls, scene);
 }
 
@@ -509,7 +462,7 @@ void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, G
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene)
+void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, eRenderMode pipeline)
 {
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
@@ -537,10 +490,13 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	assert(glGetError() == GL_NO_ERROR);
 
 	//chose a shader
-	switch (render_mode) {
+	switch (pipeline) 
+	{
 		case FORWARD:
-			if (light_mode == MULTI) { shader = Shader::Get("light_multi"); }
-			if (light_mode == SINGLE) { shader = Shader::Get("light_single"); }
+			if (light_mode == MULTI)
+				shader = Shader::Get("light_multi");
+			if (light_mode == SINGLE)
+				shader = Shader::Get("light_single");
 			break;
 		case DEFERRED:
 			shader = Shader::Get("gbuffers");
@@ -596,9 +552,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_texture_metallic_roughness", texture_met_rough, 2);
 	shader->setUniform("u_texture_normals", texture_norm, 3);
 
-	shader->setUniform("u_deferred", (bool)(render_mode == DEFERRED_ALPHA));
+	shader->setUniform("u_deferred", (bool)(pipeline == DEFERRED_ALPHA));
 
-	if (render_mode == DEFERRED_ALPHA)
+	if (pipeline == DEFERRED_ALPHA)
 	{
 		shader->setUniform("u_ao", activate_ssao);
 
@@ -613,7 +569,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
 
-	if (render_mode == FORWARD && light_mode == MULTI || render_mode == DEFERRED_ALPHA)
+	if (pipeline == FORWARD && light_mode == MULTI || pipeline == DEFERRED_ALPHA)
 	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
@@ -634,9 +590,9 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			mesh->render(GL_TRIANGLES);
 		}
 		else
-			renderMultiPass(mesh, material, shader);
+			renderMultiPass(mesh, material, shader, pipeline);
 	}
-	else if (render_mode == FORWARD && light_mode == SINGLE)
+	else if (pipeline == FORWARD && light_mode == SINGLE)
 	{
 		//select the blending
 		if (material->alpha_mode == GTR::eAlphaMode::BLEND)
@@ -648,7 +604,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 		renderSinglePass(shader, mesh);
 	}
 	else
-		if (dithering || material->alpha_mode != BLEND)
+		if (dithering || material->alpha_mode == NO_ALPHA)
 			mesh->render(GL_TRIANGLES);
 
 	//disable shader
@@ -659,7 +615,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	glDepthFunc(GL_LESS); //as default
 }
 
-void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
+void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader, eRenderMode pipeline)
 {
 	//allow to render pixels that have the same depth as the one in the depth buffer
 	glEnable(GL_DEPTH_TEST);
@@ -674,13 +630,22 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader)
 		//first pass doesn't use blending
 		if (i != 0)
 		{
-			if (material) {
-				if (material->alpha_mode != GTR::eAlphaMode::BLEND) { glEnable(GL_BLEND); }
-				if (material->alpha_mode == GTR::eAlphaMode::BLEND) { glBlendFunc(GL_SRC_ALPHA, GL_ONE); }
+			if (material)
+			{
+				if (material->alpha_mode == GTR::eAlphaMode::BLEND)
+					glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+				else
+					glEnable(GL_BLEND);
 			}
 			shader->setVector3("u_ambient_light", Vector3(0, 0, 0));
-			if (render_mode == DEFERRED) { shader->setUniform("u_emissive", false); glEnable(GL_BLEND); glBlendFunc(GL_ONE, GL_ONE); }
-			else { shader->setUniform("u_emissive", Vector3(0, 0, 0)); }
+			if (pipeline == DEFERRED)
+			{
+				shader->setUniform("u_emissive", false);
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_ONE, GL_ONE);
+			}
+			else
+				shader->setUniform("u_emissive", Vector3(0, 0, 0));
 		}
 
 		light->uploadLightParams(shader, true, hdr_gamma);
@@ -801,6 +766,30 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 
 	//render the mesh
 	mesh->render(GL_TRIANGLES);
+}
+
+void Renderer::shadowMapping(LightEntity* light, Camera* camera)
+{
+	updateLight(light, camera);
+
+	//Bind to render inside a texture
+	light->shadow_fbo->bind();
+	glColorMask(false, false, false, false);
+	glClear(GL_DEPTH_BUFFER_BIT);
+
+	for (int i = 0; i < calls.size(); ++i)
+	{
+		//compute the bounding box of the object in world space (by using the mesh bounding box transformed to world space)
+		BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
+
+		//if bounding box is inside the camera frustum then the object is probably visible
+		if (light->camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
+			renderMeshWithMaterialShadow(calls[i].model, calls[i].mesh, calls[i].material, light);
+	}
+
+	//disable it to render back to the screen
+	light->shadow_fbo->unbind();
+	glColorMask(true, true, true, true);
 }
 
 void Renderer::renderToAtlas(Camera* camera) {
@@ -932,6 +921,35 @@ void Renderer::renderAtlas() {
 	atlas_shader->disable();
 	//set viewport back to default
 	glViewport(0, 0, w, h);
+}
+
+void Renderer::renderShadowmaps()
+{
+	//Render one light camera depth map (multipass)
+	if (lights.size() > 0 && depth_viewport && light_mode == MULTI)
+	{
+		if (render_mode == DEFERRED)
+			lights.push_back(directional_light);
+
+		LightEntity* light = lights[depth_light];
+
+		if (!light->cast_shadows)
+			return;
+
+		glViewport(20, 20, Application::instance->window_width / 4, Application::instance->window_height / 4); //Defining a big enough viewport
+		Shader* zshader = Shader::Get("depth");
+		zshader->enable();
+
+		//Passing uniforms
+		if (light->light_type == DIRECTIONAL) { zshader->setUniform("u_cam_type", 0); }
+		else { zshader->setUniform("u_cam_type", 1); }
+		zshader->setUniform("u_camera_nearfar", Vector2(light->camera->near_plane, light->camera->far_plane));
+
+		light->shadow_fbo->depth_texture->toViewport(zshader);
+	}
+	//Render shadow atlas (singlepass)
+	if (light_mode == SINGLE && depth_viewport && shadow_count > 0)
+		renderAtlas();
 }
 
 void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
@@ -1156,27 +1174,20 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 	//set the fov to 90 and the aspect to 1
 	cam.setPerspective(90, 1, 0.1, 1000);
 
-	render_mode = FORWARD;
-	light_mode = MULTI;
-
-	std::cout << calls.size();
-
 	for (int i = 0; i < 6; ++i) //for every cubemap face
 	{
 		//compute camera orientation using defined vectors
-		Vector3 eye = Vector3(0, 20, 0);//p.pos;
+		Vector3 eye = p.pos;
 		Vector3 front = cubemapFaceNormals[i][2];
-		Vector3 center = Vector3(0, 20, 0) + front;//p.pos + front;
+		Vector3 center = p.pos + front;
 		Vector3 up = cubemapFaceNormals[i][1];
 		cam.lookAt(eye, center, up);
 		cam.enable();
 
 		//render the scene from this point of view
 		irr_fbo->bind();
-		renderForward(calls, &cam, scene);
+		renderCalls(calls, &cam, scene, FORWARD);
 		irr_fbo->unbind();
-		//glDisable(GL_BLEND);
-		//glDisable(GL_DEPTH_TEST);
 
 		//read the pixels back and store in a FloatImage
 		images[i].fromTexture(irr_fbo->color_textures[0]);
@@ -1184,10 +1195,6 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 
 	//compute the coefficients given the six images
 	p.sh = computeSH(images, false);
-
-	render_mode = DEFERRED;
-
-	//irr_fbo->color_textures[0]->toViewport();
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)

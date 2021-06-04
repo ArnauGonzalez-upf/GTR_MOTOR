@@ -109,15 +109,14 @@ namespace GTR {
 
 		//renders several elements of the scene
 		void renderScene(Scene* scene, Camera* camera);
-
+		//fetches scene entities
+		void fetchSceneEntities(Scene* scene, Camera* camera, bool prefabs, bool lights);
 		//to render a whole prefab (with all its nodes)
 		void getCallsFromPrefab(const Matrix44& model, GTR::Prefab* prefab, Camera* camera);
-
 		//to render one node from the prefab and its children
 		void getCallsFromNode(const Matrix44& model, GTR::Node* node, Camera* camera);
-
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene);
+		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, eRenderMode pipeline);
 
 		//render the shadowmap
 		void renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light);
@@ -126,14 +125,15 @@ namespace GTR {
 		void shadowMapping(LightEntity* light, Camera* camera);
 		void renderToAtlas(Camera* camera);
 		void renderAtlas();
+		void renderShadowmaps();
 
 		//different renders for the different light_modes
-		void renderMultiPass(Mesh* mesh, Material* material, Shader* shader);
+		void renderMultiPass(Mesh* mesh, Material* material, Shader* shader, eRenderMode pipeline);
 		void renderMultiPassSphere(Shader* sh, Camera* camera);
 		void renderSinglePass(Shader* shader, Mesh* mesh);
 
 		//renderers
-		void renderForward(std::vector<RenderCall> calls, Camera* camera, Scene* scene);
+		void renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene* scene, eRenderMode pipeline);
 		void renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene);
 		void passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera, Scene* scene, int& w, int& h);
 
