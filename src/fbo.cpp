@@ -142,7 +142,7 @@ bool FBO::setTextures(std::vector<Texture*> textures, Texture* depth_texture, in
 	{
 		Texture* texture = i < textures.size() ? textures[i] : NULL;
 		assert(!texture || (texture->width == width && texture->height == height)); //incorrect size, textures must have same size
-		assert(!texture || (texture->type == type && texture->format == format)); //incorrect texture format
+		//assert(!texture || (texture->type == type && texture->format == format)); //incorrect texture format
 
 		if (texture)
 		{

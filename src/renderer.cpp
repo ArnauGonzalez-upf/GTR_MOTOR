@@ -16,8 +16,6 @@
 
 using namespace GTR;
 
-sProbe probe;
-
 Renderer::Renderer()
 {
 	render_mode = eRenderMode::DEFERRED;
@@ -48,10 +46,11 @@ Renderer::Renderer()
 			1,            //one textures
 			GL_RGBA,       //four channels
 			GL_HALF_FLOAT,//half float
-			true);        //add depth_texture)
+			false);        //add depth_texture)
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
+
 	memset(&probe, 0, sizeof(probe));
 	probe.sh.coeffs[0].set(1, 0, 0);
 	probe.sh.coeffs[1].set(0, 1, 0);
@@ -82,7 +81,9 @@ void Renderer::getCallsFromNode(const Matrix44& prefab_model, GTR::Node* node, C
 
 		//Create RenderCall
 		RenderCall call = RenderCall(node->mesh, node->material, node_model);
-		call.cam_dist = world_bounding.center.distance(camera->eye);
+
+		if (camera)
+			call.cam_dist = world_bounding.center.distance(camera->eye);
 
 		calls.push_back(call);
 	}
@@ -229,7 +230,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	glDisable(GL_BLEND);
 
 	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
-
+	//irr_fbo->color_textures[0]->toViewport();
 
 	if (render_mode == DEFERRED && show_gbuffers) {
 		showGbuffers(gbuffers_fbo, camera);
@@ -358,6 +359,8 @@ void Renderer::renderForward(std::vector<RenderCall> calls, Camera* camera, Scen
 			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene);
 		}
 	}
+
+	//renderProbe(Vector3(0, 25, 0), 2.0, probe.sh.coeffs[0].v);
 }
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
@@ -443,13 +446,18 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		render_mode = DEFERRED;
 	}
 
-	if (update_irradiance) {
-		illumination_fbo->unbind();
-		extractProbe(probe, calls, scene);
-		illumination_fbo->bind();
-	}
-	renderProbe(Vector3(0, 20, 0), 2.0, probe.sh.coeffs[0].v);
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+
+	renderProbe(Vector3(0, 25, 0), 2.0, probe.sh.coeffs[0].v);
+
 	illumination_fbo->unbind();
+}
+
+void Renderer::updateProbes(Scene* scene) 
+{
+	//memset(&probe, 0, sizeof(probe));
+	extractProbe(probe, calls, scene);
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -1148,22 +1156,27 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 	//set the fov to 90 and the aspect to 1
 	cam.setPerspective(90, 1, 0.1, 1000);
 
+	render_mode = FORWARD;
+	light_mode = MULTI;
+
+	std::cout << calls.size();
+
 	for (int i = 0; i < 6; ++i) //for every cubemap face
 	{
 		//compute camera orientation using defined vectors
-		Vector3 eye = p.pos;
+		Vector3 eye = Vector3(0, 20, 0);//p.pos;
 		Vector3 front = cubemapFaceNormals[i][2];
-		Vector3 center = p.pos + front;
+		Vector3 center = Vector3(0, 20, 0) + front;//p.pos + front;
 		Vector3 up = cubemapFaceNormals[i][1];
 		cam.lookAt(eye, center, up);
 		cam.enable();
 
 		//render the scene from this point of view
 		irr_fbo->bind();
-		render_mode = FORWARD;
 		renderForward(calls, &cam, scene);
-		render_mode = DEFERRED;
 		irr_fbo->unbind();
+		//glDisable(GL_BLEND);
+		//glDisable(GL_DEPTH_TEST);
 
 		//read the pixels back and store in a FloatImage
 		images[i].fromTexture(irr_fbo->color_textures[0]);
@@ -1171,7 +1184,10 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 
 	//compute the coefficients given the six images
 	p.sh = computeSH(images, false);
-	update_irradiance = false;
+
+	render_mode = DEFERRED;
+
+	//irr_fbo->color_textures[0]->toViewport();
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)

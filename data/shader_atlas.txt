@@ -1423,6 +1423,7 @@ in vec3 v_world_position;
 in vec3 v_normal;
 
 uniform vec3 u_coeffs[9];
+uniform vec3 u_camera_position;
 
 out vec4 FragColor;
 
@@ -1458,6 +1459,8 @@ vec3 ComputeSHIrradiance(in vec3 normal, in SH9Color sh)
     vec3 irradiance = vec3(0.0);
     for(int i = 0; i < 9; ++i)
         irradiance += sh.c[i] * shCosine.c[i];
+
+    return vec3(max(irradiance[0],0.0),max(irradiance[1],0.0), max(irradiance[2],0.0));
 
     return irradiance;
 }

@@ -663,11 +663,7 @@ void Image::fromTexture(Texture* texture)
 	}
 	
 	texture->bind();
-#ifdef OPENGL_ES3
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-#else
-	assert(0&&"not supported");
-#endif
 }
 
 //TGA format from: http://www.paulbourke.net/dataformats/tga/
@@ -989,13 +985,7 @@ void FloatImage::fromTexture(Texture* texture)
 		data = new float[width * height * num_channels];
 	}
 	texture->bind();
-
-#ifdef OPENGL_ES3
 	glGetTexImage(GL_TEXTURE_2D, 0, num_channels == 3 ? GL_RGB : GL_RGBA, GL_FLOAT, data);
-#else
-	assert(0&&"not supported");
-#endif
-
 }
 
 

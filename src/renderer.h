@@ -71,6 +71,8 @@ namespace GTR {
 		eLightMode light_mode;
 		eLightEq light_eq;
 
+		sProbe probe;
+
 		bool pcf;
 		bool depth_viewport;
 		bool dithering;
@@ -143,6 +145,8 @@ namespace GTR {
 		void renderProbe(Vector3 pos, float size, float* coeffs);
 		void extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* scene);
 		void updatecoeffs(float hdr[3], float domega, sProbe p);
+
+		void updateProbes( Scene* scene);
 
 	};
 
