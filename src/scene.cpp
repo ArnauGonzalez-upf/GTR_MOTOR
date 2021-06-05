@@ -151,6 +151,8 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 		return new GTR::LightEntity();
 	if (type == "PROBE")
 		return new GTR::ProbeEntity();
+	if (type == "IRRADIANCE_GRID")
+		return new GTR::IrradianceGrid();
     return NULL;
 }
 
@@ -212,6 +214,39 @@ void GTR::ProbeEntity::renderInMenu()
 {
 	BaseEntity::renderInMenu();
 }
+
+GTR::IrradianceGrid::IrradianceGrid()
+{
+	entity_type = IRRADIANCE_GRID;
+}
+void GTR::IrradianceGrid::updateProbe(ProbeEntity* p)
+{
+	Vector3 global = model * p->local;
+	p->model.setTranslation(global.x, global.y, global.z);
+	p->model.scale(probe_scale, probe_scale, probe_scale);
+}
+
+void GTR::IrradianceGrid::configure(cJSON* json)
+{
+	size = readJSONNumber(json, "size", 2);
+	probe_scale = readJSONNumber(json, "probe_scale", 5);
+	for (int i = 0; i < size; ++i)
+		for (int j = 0; j < size; ++j)
+			for (int k = 0; k < size; ++k) {
+				ProbeEntity* p = new ProbeEntity();
+				Vector3 local = Vector3(i, j, k);
+				p->local = local;
+				p->index = i + size * (j + size * k);
+				updateProbe(p);
+				probes.push_back(p);
+			}
+}
+
+void GTR::IrradianceGrid::renderInMenu()
+{
+	BaseEntity::renderInMenu();
+}
+
 
 GTR::LightEntity::LightEntity()
 {

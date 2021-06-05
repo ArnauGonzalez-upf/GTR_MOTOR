@@ -50,11 +50,6 @@ Renderer::Renderer()
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
-
-	//memset(&probe, 0, sizeof(probe));
-	//probe.sh.coeffs[0].set(1, 0, 0);
-	//probe.sh.coeffs[1].set(0, 1, 0);
-	//probe.pos.set(0, 20, 0);
 }
 
 //renders all the prefab
@@ -211,7 +206,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	renderShadowmaps();
 }
 
-void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefabs, bool fetch_lights, bool fetch_probes)
+void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefabs, bool fetch_lights, bool fetch_probes, bool fetch_grid)
 {
 	//if we want to fetch the calls (lights), clear the array of calls (lights) first
 	if (fetch_prefabs)
@@ -243,6 +238,9 @@ void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefa
 			ProbeEntity* pent = (GTR::ProbeEntity*)ent;
 			probes.push_back(pent);
 		}
+
+		if (fetch_grid && ent->entity_type == IRRADIANCE_GRID)
+			grid = (GTR::IrradianceGrid*)ent;
 
 		if (fetch_lights && ent->entity_type == LIGHT)
 		{
@@ -276,7 +274,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	fetchSceneEntities(scene, camera, true, true, true);
+	fetchSceneEntities(scene, camera, true, true, false, true);
 
 	//Calculate the shadowmaps
 	if (light_mode == MULTI) 
@@ -1148,7 +1146,7 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 
 void Renderer::renderProbes()
 {
-	if (probes.empty())
+	if (!grid && probes.empty())
 		return;
 
 	Camera* camera = Camera::current;
@@ -1161,15 +1159,32 @@ void Renderer::renderProbes()
 
 	shader->enable();
 	
-	for (int i = 0; i < probes.size(); ++i)
+	if (!probes.empty()) 
 	{
-		ProbeEntity* p = probes[i];
-		shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
-		shader->setUniform("u_camera_position", camera->eye);
-		shader->setUniform("u_model", p->model);
-		shader->setUniform3Array("u_coeffs", p->sh.coeffs[0].v, 9);
+		for (int i = 0; i < probes.size(); ++i)
+		{
+			ProbeEntity* p = probes[i];
+			shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+			shader->setUniform("u_camera_position", camera->eye);
+			shader->setUniform("u_model", p->model);
+			shader->setUniform3Array("u_coeffs", p->sh.coeffs[0].v, 9);
 
-		mesh->render(GL_TRIANGLES);
+			mesh->render(GL_TRIANGLES);
+		}
+	}
+	if (grid)
+	{
+		for (int i = 0; i < grid->probes.size(); ++i)
+		{
+			ProbeEntity* p = grid->probes[i];
+			//p->model = p->model * grid->model; //get model in world coords.
+			shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+			shader->setUniform("u_camera_position", camera->eye);
+			shader->setUniform("u_model", p->model);
+			shader->setUniform3Array("u_coeffs", p->sh.coeffs[0].v, 9);
+
+			mesh->render(GL_TRIANGLES);
+		}
 	}
 }
 
@@ -1206,11 +1221,25 @@ void Renderer::extractProbe(ProbeEntity* p, std::vector<RenderCall> calls, Scene
 
 void Renderer::updateProbes(Scene* scene)
 {
-	for (int i = 0; i < probes.size(); ++i)
+	if (!probes.empty()) 
 	{
-		ProbeEntity* p = probes[i];
-		extractProbe(p, calls, scene);
+		for (int i = 0; i < probes.size(); ++i)
+		{
+			ProbeEntity* p = probes[i];
+			extractProbe(p, calls, scene);
+		}
 	}
+	if (grid)
+	{
+		for (int i = 0; i < grid->probes.size(); ++i)
+		{
+			ProbeEntity* p = grid->probes[i];
+			//update position
+			grid->updateProbe(p);
+			extractProbe(p, calls, scene);
+		}
+	}
+
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)

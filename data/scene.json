@@ -55,10 +55,12 @@
 			"scale": [ 0.8, 0.8, 0.8 ]
 		},
 		{
-			"name": "irr_probe",
-			"type": "PROBE",
-			"position": [ 0, 20, 0 ],
-			"scale": [ 5, 5, 5 ]
+			"name": "irr_grid",
+			"type": "IRRADIANCE_GRID",
+			"position": [ 0, 60, 0 ],
+			"scale": [ 30, 30, 30 ],
+			"probe_scale": 5,
+			"size": 3
 		},
 		{
 			"name":"spot",

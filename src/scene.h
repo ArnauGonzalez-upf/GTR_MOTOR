@@ -75,6 +75,20 @@ namespace GTR {
 
 	};
 
+	class IrradianceGrid : public GTR::BaseEntity
+	{
+	public:
+		std::vector<ProbeEntity*> probes;
+		int size; //number of points in each axis of the grid
+		int probe_scale;
+		
+
+		IrradianceGrid();
+		virtual void renderInMenu();
+		virtual void configure(cJSON* json);
+		void updateProbe(ProbeEntity* p);
+	};
+
 	class LightEntity : public GTR::BaseEntity
 	{
 	public:
@@ -120,15 +134,6 @@ namespace GTR {
 		bool load(const char* filename);
 		BaseEntity* createEntity(std::string type);
 	};
-
-	//class IrradianceGrid : public GTR::BaseEntity
-	//{
-	//public:
-	//	std::vector<ProbeEntity> probes;
-
-
-	//	IrradianceGrid();
-	//};
 
 };
 
