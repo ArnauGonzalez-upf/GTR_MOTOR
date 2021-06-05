@@ -149,6 +149,8 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 		return new GTR::PrefabEntity();
 	if (type == "LIGHT")
 		return new GTR::LightEntity();
+	if (type == "PROBE")
+		return new GTR::ProbeEntity();
     return NULL;
 }
 
@@ -191,6 +193,24 @@ void GTR::PrefabEntity::renderInMenu()
 		ImGui::TreePop();
 	}
 #endif
+}
+
+GTR::ProbeEntity::ProbeEntity() 
+{
+	entity_type = PROBE;
+	local = Vector3(); //its ijk pos in the matrix
+	index = 0;
+	//sh = SphericalHarmonics();
+}
+
+void GTR::ProbeEntity::configure(cJSON* json)
+{
+
+}
+
+void GTR::ProbeEntity::renderInMenu()
+{
+	BaseEntity::renderInMenu();
 }
 
 GTR::LightEntity::LightEntity()

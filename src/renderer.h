@@ -4,7 +4,6 @@
 #include "scene.h"
 #include "fbo.h"
 #include "application.h"
-#include "sphericalharmonics.h"
 
 //forward declarations
 class Camera;
@@ -29,15 +28,6 @@ namespace GTR {
 		DIRECT_BURLEY,
 		NO_EQ
 	};
-
-	//struct to store probes
-	struct sProbe {
-		Vector3 pos; //where is located
-		Vector3 local; //its ijk pos in the matrix
-		int index; //its index in the linear array
-		SphericalHarmonics sh; //coeffs
-	};
-
 
 	class Prefab;
 	class Material;
@@ -71,8 +61,6 @@ namespace GTR {
 		eLightMode light_mode;
 		eLightEq light_eq;
 
-		sProbe probe;
-
 		bool pcf;
 		bool depth_viewport;
 		bool dithering;
@@ -94,6 +82,7 @@ namespace GTR {
 
 		std::vector<RenderCall> calls;
 		std::vector<LightEntity*> lights;
+		std::vector<ProbeEntity*> probes;
 		LightEntity* directional_light;
 
 		FBO* atlas;
@@ -110,7 +99,7 @@ namespace GTR {
 		//renders several elements of the scene
 		void renderScene(Scene* scene, Camera* camera);
 		//fetches scene entities
-		void fetchSceneEntities(Scene* scene, Camera* camera, bool prefabs, bool lights);
+		void fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefabs, bool fetch_lights, bool fetch_probes);
 		//to render a whole prefab (with all its nodes)
 		void getCallsFromPrefab(const Matrix44& model, GTR::Prefab* prefab, Camera* camera);
 		//to render one node from the prefab and its children
@@ -142,9 +131,9 @@ namespace GTR {
 		void showGbuffers(FBO* gbuffers_fbo, Camera* camera);
 
 		//irradiance
-		void renderProbe(Vector3 pos, float size, float* coeffs);
-		void extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* scene);
-		void updatecoeffs(float hdr[3], float domega, sProbe p);
+		void renderProbes();
+		void extractProbe(ProbeEntity* p, std::vector<RenderCall> calls, Scene* scene);
+		void updatecoeffs(float hdr[3], float domega, ProbeEntity p);
 
 		void updateProbes( Scene* scene);
 

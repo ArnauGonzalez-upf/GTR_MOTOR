@@ -5,6 +5,7 @@
 #include <string>
 #include "fbo.h"
 #include "camera.h"
+#include "sphericalharmonics.h"
 
 //forward declaration
 class cJSON; 
@@ -18,8 +19,9 @@ namespace GTR {
 		PREFAB = 1,
 		LIGHT = 2,
 		CAMERA = 3,
-		REFLECTION_PROBE = 4,
-		DECALL = 5
+		IRRADIANCE_GRID = 4,
+		PROBE = 5,
+		DECALL = 6
 	};
 
 	enum eLightType {
@@ -58,6 +60,19 @@ namespace GTR {
 		PrefabEntity();
 		virtual void renderInMenu();
 		virtual void configure(cJSON* json);
+	};
+
+	class ProbeEntity : public GTR::BaseEntity 
+	{
+	public:
+		Vector3 local; //its ijk pos in the matrix
+		int index; //its index in the linear array
+		SphericalHarmonics sh; //coeffs
+
+		ProbeEntity();
+		virtual void renderInMenu();
+		virtual void configure(cJSON* json);
+
 	};
 
 	class LightEntity : public GTR::BaseEntity
@@ -105,6 +120,15 @@ namespace GTR {
 		bool load(const char* filename);
 		BaseEntity* createEntity(std::string type);
 	};
+
+	//class IrradianceGrid : public GTR::BaseEntity
+	//{
+	//public:
+	//	std::vector<ProbeEntity> probes;
+
+
+	//	IrradianceGrid();
+	//};
 
 };
 

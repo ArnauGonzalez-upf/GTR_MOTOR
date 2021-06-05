@@ -51,10 +51,10 @@ Renderer::Renderer()
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
 
-	memset(&probe, 0, sizeof(probe));
-	probe.sh.coeffs[0].set(1, 0, 0);
-	probe.sh.coeffs[1].set(0, 1, 0);
-	probe.pos.set(0, 20, 0);
+	//memset(&probe, 0, sizeof(probe));
+	//probe.sh.coeffs[0].set(1, 0, 0);
+	//probe.sh.coeffs[1].set(0, 1, 0);
+	//probe.pos.set(0, 20, 0);
 }
 
 //renders all the prefab
@@ -211,17 +211,19 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	renderShadowmaps();
 }
 
-void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefab, bool fetch_light)
+void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefabs, bool fetch_lights, bool fetch_probes)
 {
 	//if we want to fetch the calls (lights), clear the array of calls (lights) first
-	if (fetch_prefab)
+	if (fetch_prefabs)
 		calls.clear();
-	if (fetch_light)
+	if (fetch_lights)
 	{
 		directional_light = NULL;
 		shadow_count = 0;
 		lights.clear();
 	}
+	if (fetch_probes)
+		probes.clear();
 	for (int i = 0; i < scene->entities.size(); ++i)
 	{
 		BaseEntity* ent = scene->entities[i];
@@ -229,14 +231,20 @@ void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefa
 			continue;
 
 		//is a prefab!
-		if (ent->entity_type == PREFAB && fetch_prefab)
+		if (fetch_prefabs && ent->entity_type == PREFAB)
 		{
 			PrefabEntity* pent = (GTR::PrefabEntity*)ent;
 			if (pent->prefab)
 				getCallsFromPrefab(ent->model, pent->prefab, camera);
 		}
 
-		if (ent->entity_type == LIGHT && fetch_light)
+		if (fetch_probes && ent->entity_type == PROBE)
+		{
+			ProbeEntity* pent = (GTR::ProbeEntity*)ent;
+			probes.push_back(pent);
+		}
+
+		if (fetch_lights && ent->entity_type == LIGHT)
 		{
 			LightEntity* light = (GTR::LightEntity*)ent;
 
@@ -255,7 +263,7 @@ void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefa
 	}
 
 	//Sorting rendercalls
-	if (fetch_prefab) 
+	if (fetch_prefabs) 
 		std::sort(calls.begin(), calls.end());
 
 }
@@ -268,7 +276,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	fetchSceneEntities(scene, camera, true, true);
+	fetchSceneEntities(scene, camera, true, true, true);
 
 	//Calculate the shadowmaps
 	if (light_mode == MULTI) 
@@ -403,14 +411,9 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 
-	renderProbe(probe.pos, 2.0, probe.sh.coeffs[0].v);
+	renderProbes();
 
 	illumination_fbo->unbind();
-}
-
-void Renderer::updateProbes(Scene* scene) 
-{
-	extractProbe(probe, calls, scene);
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -1143,8 +1146,11 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 	sh->setUniform("u_gamma", hdr_gamma);
 }
 
-void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
+void Renderer::renderProbes()
 {
+	if (probes.empty())
+		return;
+
 	Camera* camera = Camera::current;
 	Shader* shader = Shader::Get("probe");
 	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj",false);
@@ -1153,20 +1159,21 @@ void Renderer::renderProbe(Vector3 pos, float size, float* coeffs)
 	glDisable(GL_BLEND);
 	glEnable(GL_DEPTH_TEST);
 
-	Matrix44 model;
-	model.setTranslation(pos.x, pos.y, pos.z);
-	model.scale(size, size, size);
-
 	shader->enable();
-	shader->setUniform("u_viewprojection",camera->viewprojection_matrix);
-	shader->setUniform("u_camera_position", camera->eye);
-	shader->setUniform("u_model", model);
-	shader->setUniform3Array("u_coeffs", coeffs, 9);
+	
+	for (int i = 0; i < probes.size(); ++i)
+	{
+		ProbeEntity* p = probes[i];
+		shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+		shader->setUniform("u_camera_position", camera->eye);
+		shader->setUniform("u_model", p->model);
+		shader->setUniform3Array("u_coeffs", p->sh.coeffs[0].v, 9);
 
-	mesh->render(GL_TRIANGLES);
+		mesh->render(GL_TRIANGLES);
+	}
 }
 
-void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* scene) {
+void Renderer::extractProbe(ProbeEntity* p, std::vector<RenderCall> calls, Scene* scene) {
 
 	FloatImage images[6]; //here we will store the six views
 
@@ -1177,9 +1184,9 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 	for (int i = 0; i < 6; ++i) //for every cubemap face
 	{
 		//compute camera orientation using defined vectors
-		Vector3 eye = p.pos;
+		Vector3 eye = p->model.getTranslation();
 		Vector3 front = cubemapFaceNormals[i][2];
-		Vector3 center = p.pos + front;
+		Vector3 center = eye + front;
 		Vector3 up = cubemapFaceNormals[i][1];
 		cam.lookAt(eye, center, up);
 		cam.enable();
@@ -1194,7 +1201,16 @@ void Renderer::extractProbe(sProbe& p, std::vector<RenderCall> calls, Scene* sce
 	}
 
 	//compute the coefficients given the six images
-	p.sh = computeSH(images, false);
+	p->sh = computeSH(images, false);
+}
+
+void Renderer::updateProbes(Scene* scene)
+{
+	for (int i = 0; i < probes.size(); ++i)
+	{
+		ProbeEntity* p = probes[i];
+		extractProbe(p, calls, scene);
+	}
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)
