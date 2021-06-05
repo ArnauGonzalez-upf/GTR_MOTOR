@@ -220,7 +220,7 @@ GTR::IrradianceGrid::IrradianceGrid()
 	entity_type = IRRADIANCE_GRID;
 }
 void GTR::IrradianceGrid::updateProbe(ProbeEntity* p)
-{
+{ 
 	Vector3 global = model * p->local;
 	p->model.setTranslation(global.x, global.y, global.z);
 	p->model.scale(probe_scale, probe_scale, probe_scale);
@@ -228,15 +228,15 @@ void GTR::IrradianceGrid::updateProbe(ProbeEntity* p)
 
 void GTR::IrradianceGrid::configure(cJSON* json)
 {
-	size = readJSONNumber(json, "size", 2);
+	dim = readJSONVector3(json, "dim", Vector3());
 	probe_scale = readJSONNumber(json, "probe_scale", 5);
-	for (int i = 0; i < size; ++i)
-		for (int j = 0; j < size; ++j)
-			for (int k = 0; k < size; ++k) {
+	for (int i = 0; i < dim.x; ++i)
+		for (int j = 0; j < dim.y; ++j)
+			for (int k = 0; k < dim.z; ++k) {
 				ProbeEntity* p = new ProbeEntity();
-				Vector3 local = Vector3(i, j, k);
+				Vector3 local = Vector3(i/dim.x, j/dim.y, k/dim.z);
 				p->local = local;
-				p->index = i + size * (j + size * k);
+				p->index = i + dim.x * (j + dim.z * k);
 				updateProbe(p);
 				probes.push_back(p);
 			}

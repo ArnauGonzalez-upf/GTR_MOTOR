@@ -9,6 +9,7 @@
 
 //forward declaration
 class cJSON; 
+class HDRE;
 
 
 //our namespace
@@ -79,7 +80,7 @@ namespace GTR {
 	{
 	public:
 		std::vector<ProbeEntity*> probes;
-		int size; //number of points in each axis of the grid
+		Vector3 dim; //number of points in each axis of the grid
 		int probe_scale;
 		
 
@@ -122,6 +123,8 @@ namespace GTR {
 		Vector3 background_color;
 		Vector3 ambient_light;
 		Camera main_camera;
+
+		Texture* environment;
 
 		Scene();
 

@@ -7,6 +7,7 @@
 
 //forward declarations
 class Camera;
+class HDRE;
 
 namespace GTR {
 
@@ -78,6 +79,8 @@ namespace GTR {
 		float hdr_white_balance;
 		float hdr_gamma;
 
+		Texture* probes_texture;
+
 		Renderer();
 
 		std::vector<RenderCall> calls;
@@ -138,6 +141,7 @@ namespace GTR {
 
 		void updateProbes( Scene* scene);
 
+		void renderSkybox(Texture* skybox, Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

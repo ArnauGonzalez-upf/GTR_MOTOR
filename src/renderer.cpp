@@ -50,6 +50,8 @@ Renderer::Renderer()
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
+
+	probes_texture = NULL;
 }
 
 //renders all the prefab
@@ -308,11 +310,41 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 		renderDeferred(calls, camera, scene);
 }
 
+void Renderer::renderSkybox(Texture* skybox, Camera* camera)
+{
+	Shader* shader = Shader::Get("skybox");
+	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj", false);
+
+	shader->enable();
+
+	Matrix44 m;
+	m.translate(camera->eye.x, camera->eye.y, camera->eye.z);
+	m.scale(5, 5, 5);
+
+	shader->setUniform("u_model", m);
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+
+	shader->setUniform("u_texture", skybox, 0);
+
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+
+	mesh->render(GL_TRIANGLES);
+
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
+}
+
 void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene* scene, eRenderMode pipeline)
 {
 	Vector3 bg_color = scene->background_color;
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	if (scene->environment)
+		renderSkybox(scene->environment, camera);
 
 	//Rendering the final scene
 	for (int i = 0; i < calls.size(); ++i)
@@ -1008,14 +1040,29 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 
 Texture* GTR::CubemapFromHDRE(const char* filename)
 {
-	HDRE* hdre = new HDRE();
-	if (!hdre->load(filename))
-	{
-		delete hdre;
+	HDRE* hdre = HDRE::Get(filename);
+	if (!hdre)
 		return NULL;
-	}
 
-	return NULL;
+	Texture* texture = new Texture();
+	if (hdre->getFacesf(0))
+	{
+		texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesf(0),
+			hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_FLOAT);
+		for (int i = 1; i < hdre->levels; ++i)
+			texture->uploadCubemap(texture->format, texture->type, false,
+				(Uint8**)hdre->getFacesf(i), GL_RGBA32F, i);
+	}
+	else
+		if (hdre->getFacesh(0))
+		{
+			texture->createCubemap(hdre->width, hdre->height, (Uint8**)hdre->getFacesh(0),
+				hdre->header.numChannels == 3 ? GL_RGB : GL_RGBA, GL_HALF_FLOAT);
+			for (int i = 1; i < hdre->levels; ++i)
+				texture->uploadCubemap(texture->format, texture->type, false,
+					(Uint8**)hdre->getFacesh(i), GL_RGBA16F, i);
+		}
+	return texture;
 }
 
 SSAO::SSAO(int points_num, bool ssao_plus)
@@ -1231,15 +1278,41 @@ void Renderer::updateProbes(Scene* scene)
 	}
 	if (grid)
 	{
+		if (!probes_texture)
+		{
+			//create the texture to store the probes (do this ONCE!!!)
+			probes_texture = new Texture(
+				9, //9 coefficients per probe
+				125, //as many rows as probes
+				GL_RGB, //3 channels per coefficient
+				GL_FLOAT); //they require a high range
+		}
+
+		//we must create the color information for the texture. because every SH are 27 floats in the RGB,RGB,... order, we can create an array of SphericalHarmonics and use it as pixels of the texture
+		SphericalHarmonics* sh_data = NULL;
+		sh_data = new SphericalHarmonics[grid->dim.x * grid->dim.y * grid->dim.z];
+
 		for (int i = 0; i < grid->probes.size(); ++i)
 		{
 			ProbeEntity* p = grid->probes[i];
 			//update position
 			grid->updateProbe(p);
 			extractProbe(p, calls, scene);
-		}
-	}
 
+			sh_data[i] = p->sh;
+		}
+
+		probes_texture->upload(GL_RGB, GL_FLOAT, false, (uint8*)sh_data);
+
+		//disable any texture filtering when reading
+		probes_texture->bind();
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		probes_texture->unbind();
+
+		//always free memory after allocating it!!!
+		delete[] sh_data;
+	}
 }
 
 //void updatecoeffs(float hdr[3], float domega, float x, float y, float z)
