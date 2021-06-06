@@ -218,7 +218,16 @@ void GTR::ProbeEntity::renderInMenu()
 GTR::IrradianceGrid::IrradianceGrid()
 {
 	entity_type = IRRADIANCE_GRID;
+	inv_model = model;
+	inv_model.inverse();
 }
+
+void GTR::IrradianceGrid::updateGrid()
+{
+	inv_model = model;
+	inv_model.inverse();
+}
+
 void GTR::IrradianceGrid::updateProbe(ProbeEntity* p)
 { 
 	Vector3 global = model * p->local;
@@ -230,16 +239,21 @@ void GTR::IrradianceGrid::configure(cJSON* json)
 {
 	dim = readJSONVector3(json, "dim", Vector3());
 	probe_scale = readJSONNumber(json, "probe_scale", 5);
-	for (int i = 0; i < dim.x; ++i)
+	//add probes to std::vector (indexes already ordered)
+	for (int k = 0; k < dim.z; ++k)
 		for (int j = 0; j < dim.y; ++j)
-			for (int k = 0; k < dim.z; ++k) {
+			for (int i = 0; i < dim.x; ++i) {
 				ProbeEntity* p = new ProbeEntity();
 				Vector3 local = Vector3(i/dim.x, j/dim.y, k/dim.z);
 				p->local = local;
-				p->index = i + dim.x * (j + dim.z * k);
+				p->index = i + dim.x * (j + dim.y * k);
 				updateProbe(p);
 				probes.push_back(p);
 			}
+	//for (int i = 0; i < probes.size(); ++i)
+	//{
+	//	std::cout << probes[i]->index << " ";
+	//}
 }
 
 void GTR::IrradianceGrid::renderInMenu()

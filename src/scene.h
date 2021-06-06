@@ -80,6 +80,8 @@ namespace GTR {
 	{
 	public:
 		std::vector<ProbeEntity*> probes;
+
+		Matrix44 inv_model;
 		Vector3 dim; //number of points in each axis of the grid
 		int probe_scale;
 		
@@ -88,6 +90,7 @@ namespace GTR {
 		virtual void renderInMenu();
 		virtual void configure(cJSON* json);
 		void updateProbe(ProbeEntity* p);
+		void updateGrid();
 	};
 
 	class LightEntity : public GTR::BaseEntity

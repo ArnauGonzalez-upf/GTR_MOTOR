@@ -58,10 +58,10 @@
 		{
 			"name": "irr_grid",
 			"type": "IRRADIANCE_GRID",
-			"position": [ 0, 60, -100 ],
-			"scale": [ 100, 100, 100 ],
+			"position": [ -190, 30, -350 ],
+			"scale": [ 400, 400, 1000 ],
 			"probe_scale": 5,
-			"dim": [ 3, 3, 3 ]
+			"dim": [ 8, 4, 20 ]
 		},
 		{
 			"name": "spot",

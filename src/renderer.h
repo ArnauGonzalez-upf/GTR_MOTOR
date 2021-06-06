@@ -79,21 +79,20 @@ namespace GTR {
 		float hdr_white_balance;
 		float hdr_gamma;
 
-		Texture* probes_texture;
-
-		Renderer();
-
 		std::vector<RenderCall> calls;
 		std::vector<LightEntity*> lights;
 		std::vector<ProbeEntity*> probes;
 		IrradianceGrid* grid;
 		LightEntity* directional_light;
 
+		Texture* probes_texture;
 		FBO* atlas;
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
 		FBO* irr_fbo;
 		SSAO* ssao;
+
+		Renderer();
 
 		//update the light viewproj matrix and parameters
 		void updateLight(LightEntity* light, Camera* camera);

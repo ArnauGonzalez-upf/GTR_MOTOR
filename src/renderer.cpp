@@ -46,7 +46,7 @@ Renderer::Renderer()
 			1,            //one textures
 			GL_RGBA,       //four channels
 			GL_HALF_FLOAT,//half float
-			false);        //add depth_texture)
+			true);        //add depth_texture)
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
@@ -126,9 +126,10 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 		Texture* albedo = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
 		Texture* normals = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
 		Texture* extra = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
+		Texture* irradiance = new Texture(w, h, GL_RGB, GL_HALF_FLOAT);
 		Texture* depth = new Texture(w, h, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, false);
 
-		std::vector<Texture*> text = { albedo,normals,extra };
+		std::vector<Texture*> text = { albedo,normals,extra,irradiance };
 
 		gbuffers_fbo->setTextures(text, depth);
 	}
@@ -150,8 +151,13 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	//and now enable the second GB to clear it to black
+	//third
 	gbuffers_fbo->enableSingleBuffer(2);
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	//fourth
+	gbuffers_fbo->enableSingleBuffer(3);
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -200,7 +206,6 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	glDisable(GL_BLEND);
 
 	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
-	//irr_fbo->color_textures[0]->toViewport();
 
 	if (render_mode == DEFERRED && show_gbuffers)
 		showGbuffers(gbuffers_fbo, camera);
@@ -343,8 +348,8 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	if (scene->environment)
-		renderSkybox(scene->environment, camera);
+	/*if (scene->environment)
+		renderSkybox(scene->environment, camera);*/
 
 	//Rendering the final scene
 	for (int i = 0; i < calls.size(); ++i)
@@ -376,7 +381,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	illumination_fbo->bind();
 
 	//now we copy the gbuffers depth buffer to the binded depth buffer in the FBO
-	gbuffers_fbo->depth_texture->copyTo(NULL);
+	gbuffers_fbo->depth_texture->copyTo(NULL, NULL);
 
 	//be sure to not clean the depth buffer afterwards!!
 	glClear(GL_COLOR_BUFFER_BIT);
@@ -636,9 +641,19 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 
 		renderSinglePass(shader, mesh);
 	}
-	else
+	else 
+	{
+		bool irradiance = false;
+		if (probes_texture) {
+			irradiance = true;
+			shader->setUniform("u_invmodel_grid", grid->inv_model);
+			shader->setUniform("u_irr_dims", grid->dim);
+			shader->setTexture("u_texture_probes", probes_texture, 6);
+		}
+		shader->setUniform("u_irr", irradiance);
 		if (dithering || material->alpha_mode == NO_ALPHA)
 			mesh->render(GL_TRIANGLES);
+	}
 
 	//disable shader
 	shader->disable();
@@ -1024,16 +1039,16 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
+		gbuffers_fbo->color_textures[3]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[1]->toViewport();
 
-		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
-		Shader* depth_shader = Shader::Get("depth");
-		depth_shader->enable();
-		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
-		illumination_fbo->depth_texture->toViewport(depth_shader);
+		//glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+		//Shader* depth_shader = Shader::Get("depth");
+		//depth_shader->enable();
+		//depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+		//illumination_fbo->depth_texture->toViewport(depth_shader);
 	}
 }
 
@@ -1278,21 +1293,25 @@ void Renderer::updateProbes(Scene* scene)
 	}
 	if (grid)
 	{
+		//update grid
+		grid->updateGrid();
+		int n_probes = grid->probes.size();
 		if (!probes_texture)
 		{
 			//create the texture to store the probes (do this ONCE!!!)
 			probes_texture = new Texture(
 				9, //9 coefficients per probe
-				125, //as many rows as probes
+				n_probes, //as many rows as probes
 				GL_RGB, //3 channels per coefficient
 				GL_FLOAT); //they require a high range
 		}
 
 		//we must create the color information for the texture. because every SH are 27 floats in the RGB,RGB,... order, we can create an array of SphericalHarmonics and use it as pixels of the texture
 		SphericalHarmonics* sh_data = NULL;
-		sh_data = new SphericalHarmonics[grid->dim.x * grid->dim.y * grid->dim.z];
+		sh_data = new SphericalHarmonics[n_probes];
 
-		for (int i = 0; i < grid->probes.size(); ++i)
+		//extract each probe
+		for (int i = 0; i < n_probes; ++i)
 		{
 			ProbeEntity* p = grid->probes[i];
 			//update position
