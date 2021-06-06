@@ -65,13 +65,13 @@ float nearest_probe_uv(vec3 worldpos)
 	//from world coords to grid local coords (clamped between 0 and 1)
 	vec3 irr_local_pos = clamp((u_invmodel_grid * vec4(worldpos, 1.0)).xyz, vec3(0.0), vec3(1.0));
 
-	//multiply local pos by dims to go from range (0...1) to (0...dim)
+	//multiply local pos by dims to go from range (0...1) to (0...dim-1)
 	float xx = u_irr_dims.x - 1;
 	float yy = u_irr_dims.y - 1;
 	float zz = u_irr_dims.z - 1;
 	irr_local_pos = vec3( irr_local_pos.x * xx, irr_local_pos.y * yy, irr_local_pos.z * zz );
 
-	//round values to get the 3D index and subtract 1 as indices go from 0 to N-1
+	//round values to get the 3D index
 	//vec3 local_indices = round( irr_local_pos ) - vec3(1.0); ???????
 	vec3 local_indices = round( irr_local_pos );
 
