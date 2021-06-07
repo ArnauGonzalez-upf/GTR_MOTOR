@@ -54,6 +54,13 @@ Renderer::Renderer()
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
 
 	probes_texture = NULL;
+
+	reflections_fbo = new FBO();
+	reflections_fbo->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGB,       //four channels
+		GL_FLOAT,//half float
+		false);
 }
 
 //renders all the prefab
@@ -84,6 +91,21 @@ void Renderer::getCallsFromNode(const Matrix44& prefab_model, GTR::Node* node, C
 
 		if (camera)
 			call.cam_dist = world_bounding.center.distance(camera->eye);
+
+		float dist = FLT_MAX;
+		for (int i = 0; i < reflection_probes.size(); ++i)
+		{
+			ReflectionProbeEntity* p = reflection_probes[i];
+			Vector3 pos = p->model.getTranslation();
+			float dist_probe = pos.distance(call.model.getTranslation());
+
+			if (dist_probe < dist)
+			{
+				dist = dist_probe;
+				call.probe = p;
+			}
+
+		}
 
 		calls.push_back(call);
 	}
@@ -148,6 +170,9 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+	if (scene->environment)
+		renderSkybox(scene->environment, camera);
+
 	//and now enable the second GB to clear it to black
 	gbuffers_fbo->enableSingleBuffer(1);
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -175,7 +200,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, render_mode);
+			renderMeshWithMaterial(calls[i], camera, scene, render_mode);
 	}
 
 	//stop rendering to the gbuffers
@@ -227,7 +252,8 @@ void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefa
 		lights.clear();
 	}
 	if (fetch_probes)
-		probes.clear();
+		reflection_probes.clear();
+
 	for (int i = 0; i < scene->entities.size(); ++i)
 	{
 		BaseEntity* ent = scene->entities[i];
@@ -242,10 +268,10 @@ void Renderer::fetchSceneEntities(Scene* scene, Camera* camera, bool fetch_prefa
 				getCallsFromPrefab(ent->model, pent->prefab, camera);
 		}
 
-		if (fetch_probes && ent->entity_type == PROBE)
+		if (fetch_probes && ent->entity_type == REFLECTION_PROBE)
 		{
-			ProbeEntity* pent = (GTR::ProbeEntity*)ent;
-			probes.push_back(pent);
+			ReflectionProbeEntity* pent = (GTR::ReflectionProbeEntity*)ent;
+			reflection_probes.push_back(pent);
 		}
 
 		if (fetch_grid && ent->entity_type == IRRADIANCE_GRID)
@@ -283,7 +309,7 @@ void Renderer::renderScene(Scene* scene, Camera* camera)
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	checkGLErrors();
 
-	fetchSceneEntities(scene, camera, true, true, false, true);
+	fetchSceneEntities(scene, camera, true, true, true, true);
 
 	//Calculate the shadowmaps
 	if (light_mode == MULTI) 
@@ -350,8 +376,8 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 	glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	/*if (scene->environment)
-		renderSkybox(scene->environment, camera);*/
+	if (scene->environment)
+		renderSkybox(scene->environment, camera);
 
 	//Rendering the final scene
 	for (int i = 0; i < calls.size(); ++i)
@@ -361,8 +387,10 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 
 		//if bounding box is inside the camera frustum then the object is probably visible
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-			renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, pipeline);
+			renderMeshWithMaterial(calls[i], camera, scene, pipeline);
 	}
+
+	renderReflectionProbes(scene, camera);
 }
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
@@ -441,7 +469,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 			BoundingBox world_bounding = transformBoundingBox(calls[i].model, calls[i].mesh->box);
 			//if bounding box is inside the camera frustum then the object is probably visible
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
-				renderMeshWithMaterial(calls[i].model, calls[i].mesh, calls[i].material, camera, scene, DEFERRED_ALPHA);
+				renderMeshWithMaterial(calls[i], camera, scene, DEFERRED_ALPHA);
 		}
 	}
 
@@ -502,8 +530,12 @@ void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, G
 }
 
 //renders a mesh given its transform and material
-void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, eRenderMode pipeline)
+void Renderer::renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* scene, eRenderMode pipeline)
 {
+	Mesh* mesh = call.mesh;
+	Material* material = call.material;
+	const Matrix44 model = call.model;
+
 	//in case there is nothing to do
 	if (!mesh || !mesh->getNumVertices() || !material)
 		return;
@@ -591,6 +623,11 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 	shader->setUniform("u_texture_em", texture_em, 1);
 	shader->setUniform("u_texture_metallic_roughness", texture_met_rough, 2);
 	shader->setUniform("u_texture_normals", texture_norm, 3);
+
+	if (call.probe->cubemap)
+		shader->setUniform("u_environment_texture", call.probe->cubemap, 13);
+	else
+		shader->setUniform("u_environment_texture",Texture::getWhiteTexture(), 13);
 
 	shader->setUniform("u_deferred", (bool)(pipeline == DEFERRED_ALPHA));
 
@@ -704,6 +741,8 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader, e
 		//render the mesh
 		mesh->render(GL_TRIANGLES);
 	}
+
+
 }
 
 void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
@@ -1037,9 +1076,8 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 
 		hdr_shader->enable();
 		hdr_shader->setUniform("u_hdr", false);
-		gbuffers_fbo->color_textures[3]->toViewport(hdr_shader);
 
-		/*glViewport(0, 0, width * 0.5, height * 0.5);
+		glViewport(0, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
@@ -1052,7 +1090,7 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		Shader* depth_shader = Shader::Get("depth");
 		depth_shader->enable();
 		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
-		illumination_fbo->depth_texture->toViewport(depth_shader);*/
+		illumination_fbo->depth_texture->toViewport(depth_shader);
 	}
 }
 
@@ -1212,7 +1250,7 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 
 void Renderer::renderProbes()
 {
-	if (!grid && probes.empty())
+	if (!grid)
 		return;
 
 	Camera* camera = Camera::current;
@@ -1225,19 +1263,6 @@ void Renderer::renderProbes()
 
 	shader->enable();
 	
-	if (!probes.empty()) 
-	{
-		for (int i = 0; i < probes.size(); ++i)
-		{
-			ProbeEntity* p = probes[i];
-			shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
-			shader->setUniform("u_camera_position", camera->eye);
-			shader->setUniform("u_model", p->model);
-			shader->setUniform3Array("u_coeffs", p->sh.coeffs[0].v, 9);
-
-			mesh->render(GL_TRIANGLES);
-		}
-	}
 	if (grid)
 	{
 		for (int i = 0; i < grid->probes.size(); ++i)
@@ -1287,14 +1312,6 @@ void Renderer::extractProbe(ProbeEntity* p, std::vector<RenderCall> calls, Scene
 
 void Renderer::updateProbes(Scene* scene)
 {
-	if (!probes.empty()) 
-	{
-		for (int i = 0; i < probes.size(); ++i)
-		{
-			ProbeEntity* p = probes[i];
-			extractProbe(p, calls, scene);
-		}
-	}
 	if (grid)
 	{
 		//update grid
@@ -1335,6 +1352,73 @@ void Renderer::updateProbes(Scene* scene)
 
 		//always free memory after allocating it!!!
 		delete[] sh_data;
+	}
+}
+
+void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
+{
+	glDisable(GL_BLEND);
+	glEnable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+
+	Shader* shader = Shader::Get("reflection_probe");
+	Mesh* mesh = Mesh::Get("data/meshes/sphere.obj", false);
+
+	shader->enable();
+
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+	shader->setUniform("u_camera_position", camera->eye);
+
+	for (int i = 0; i < reflection_probes.size(); ++i)
+	{
+		ReflectionProbeEntity* probe = reflection_probes[i];
+
+		Matrix44 m = probe->model;
+		//m.translate(probe->pos.x, probe->pos.y, probe->pos.z);
+		m.scale(10, 10, 10);
+
+		shader->setUniform("u_model", m);
+
+		shader->setUniform("u_texture", probe->cubemap, 0);
+
+		mesh->render(GL_TRIANGLES);
+	}
+
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
+}
+
+void GTR::Renderer::updateReflectionProbes(Scene* scene)
+{
+	Camera cam;
+	//set the fov to 90 and the aspect to 1
+	cam.setPerspective(90, 1, 0.1, 1000);
+
+	for (int i = 0; i < reflection_probes.size(); ++i)
+	{
+		ReflectionProbeEntity* probe = reflection_probes[i];
+
+		//render the view from every side
+		for (int i = 0; i < 6; ++i)
+		{
+			//assign cubemap face to FBO
+			reflections_fbo->setTexture(probe->cubemap, i);
+
+			//bind FBO
+			reflections_fbo->bind();
+
+			//render view
+			Vector3 eye = probe->model.getTranslation();
+			Vector3 center = probe->model.getTranslation() + cubemapFaceNormals[i][2];
+			Vector3 up = cubemapFaceNormals[i][1];
+			cam.lookAt(eye, center, up);
+			cam.enable();
+			renderCalls(calls, &cam, scene, FORWARD);
+			reflections_fbo->unbind();
+		}
+
+		//generate the mipmaps
+		probe->cubemap->generateMipmaps();
 	}
 }
 

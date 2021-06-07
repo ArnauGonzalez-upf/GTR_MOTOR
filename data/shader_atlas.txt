@@ -20,6 +20,8 @@ omr quad.vs omr.fs
 hdr quad.vs hdr.fs
 probe basic.vs probe.fs
 skybox basic.vs skybox.fs
+reflection_probe basic.vs reflection_probe.fs
+
 
 \sh_functions
 const float Pi = 3.141592654;
@@ -879,6 +881,8 @@ uniform sampler2D u_depth_texture;
 uniform bool u_ao;
 uniform sampler2D u_ao_texture;
 
+uniform samplerCube u_environment_texture;
+
 out vec4 FragColor;
 
 #include "normal_functions"
@@ -1011,7 +1015,15 @@ void main()
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
 
-	FragColor = color;
+	vec3 R = reflect(-V,N);
+	//compute the reflection
+	vec3 reflection = /*baseColor.xyz */ textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * 0.1;
+	//reflection += color.xyz;
+
+	//set the metalness as alpha
+	FragColor = vec4( reflection, metallic );
+
+	//FragColor = color;
 }
 
 \shadowmap.fs
@@ -1628,4 +1640,51 @@ void main()
 	vec3 V = v_world_position - u_camera_position;
 	vec4 color = texture(u_texture, V);
 	FragColor = color;
+}
+
+\reflection_probe.fs
+
+#version 330 core
+
+in vec3 v_normal;
+in vec3 v_world_position;
+
+uniform vec4 u_color;
+uniform samplerCube u_texture;
+uniform vec3 u_camera_position;
+
+out vec4 FragColor;
+
+void main()
+{
+	vec3 N = normalize(v_normal);
+	vec3 V = v_world_position - u_camera_position;
+	vec3 R = reflect(V,N);
+	vec4 color = texture(u_texture, R, 0.0);
+	FragColor = color;
+}
+
+\reflections.fs
+
+#version 330 core
+
+in vec3 v_normal;
+in vec3 v_world_position;
+
+uniform vec4 u_color;
+uniform samplerCube u_texture;
+uniform vec3 u_camera_position;
+
+out vec4 FragColor;
+
+#include "normal_functions"
+
+void main()
+{
+	vec3 R = reflect(V,N);
+	//compute the reflection
+	vec3 reflection = /*color.xyz * textureLod( u_environment_texture, R, roughness * 0.0 ).xyz;
+
+	//set the metalness as alpha
+	FragColor = vec4( reflection, metallic );
 }

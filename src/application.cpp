@@ -414,6 +414,7 @@ void Application::onKeyDown( SDL_KeyboardEvent event )
 		case SDLK_2: renderer->show_gbuffers = (renderer->show_gbuffers + 1) % 2; break;
 		case SDLK_3: renderer->show_omr = !renderer->show_omr; break;
 		case SDLK_4: renderer->updateProbes(scene); break;
+		case SDLK_5: renderer->updateReflectionProbes(scene); break;
 	}
 }
 

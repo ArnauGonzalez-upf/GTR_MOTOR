@@ -22,7 +22,8 @@ namespace GTR {
 		CAMERA = 3,
 		IRRADIANCE_GRID = 4,
 		PROBE = 5,
-		DECALL = 6
+		DECALL = 6,
+		REFLECTION_PROBE = 7
 	};
 
 	enum eLightType {
@@ -91,6 +92,17 @@ namespace GTR {
 		virtual void configure(cJSON* json);
 		void updateProbe(ProbeEntity* p);
 		void updateGrid();
+	};
+
+	class ReflectionProbeEntity : public GTR::BaseEntity
+	{
+	public:
+		Texture* cubemap;
+
+		ReflectionProbeEntity();
+		virtual void renderInMenu();
+		virtual void configure(cJSON* json);
+
 	};
 
 	class LightEntity : public GTR::BaseEntity

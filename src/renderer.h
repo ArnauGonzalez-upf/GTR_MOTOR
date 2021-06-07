@@ -83,7 +83,7 @@ namespace GTR {
 
 		std::vector<RenderCall> calls;
 		std::vector<LightEntity*> lights;
-		std::vector<ProbeEntity*> probes;
+		std::vector<ReflectionProbeEntity*> reflection_probes;
 		IrradianceGrid* grid;
 		LightEntity* directional_light;
 
@@ -91,6 +91,7 @@ namespace GTR {
 		FBO* atlas;
 		FBO* gbuffers_fbo;
 		FBO* illumination_fbo;
+		FBO* reflections_fbo;
 		FBO* irr_fbo;
 		SSAO* ssao;
 
@@ -110,7 +111,8 @@ namespace GTR {
 		//to render one node from the prefab and its children
 		void getCallsFromNode(const Matrix44& model, GTR::Node* node, Camera* camera);
 		//to render one mesh given its material and transformation matrix
-		void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, eRenderMode pipeline);
+		//void renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Material* material, Camera* camera, Scene* scene, eRenderMode pipeline);
+		void renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* scene, eRenderMode pipeline);
 
 		//render the shadowmap
 		void renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light);
@@ -141,6 +143,8 @@ namespace GTR {
 		void updatecoeffs(float hdr[3], float domega, ProbeEntity p);
 
 		void updateProbes( Scene* scene);
+		void updateReflectionProbes(Scene* scene);
+		void renderReflectionProbes(Scene* scene, Camera* camera);
 
 		void renderSkybox(Texture* skybox, Camera* camera);
 	};

@@ -12,6 +12,7 @@ namespace GTR {
 		Mesh* mesh;
 		Material* material;
 		Matrix44 model;
+		ReflectionProbeEntity* probe;
 
 		float cam_dist;
 

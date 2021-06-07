@@ -151,6 +151,8 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 		return new GTR::LightEntity();
 	if (type == "PROBE")
 		return new GTR::ProbeEntity();
+	if (type == "REFLECTION_PROBE")
+		return new GTR::ReflectionProbeEntity();
 	if (type == "IRRADIANCE_GRID")
 		return new GTR::IrradianceGrid();
     return NULL;
@@ -408,4 +410,24 @@ void GTR::LightEntity::uploadLightParams(Shader* sh, bool linearize, float& hdr_
 	sh->setUniform("u_light_maxdist", max_distance);
 	sh->setUniform("u_light_type", (int)light_type);
 	sh->setUniform("u_light_intensity", intensity);
+}
+
+GTR::ReflectionProbeEntity::ReflectionProbeEntity()
+{
+	entity_type = REFLECTION_PROBE;
+
+	cubemap = new Texture();
+	cubemap->createCubemap(
+		512, 512,
+		NULL,
+		GL_RGB, GL_UNSIGNED_INT, false);
+}
+
+void GTR::ReflectionProbeEntity::renderInMenu()
+{
+	BaseEntity::renderInMenu();
+}
+
+void GTR::ReflectionProbeEntity::configure(cJSON* json)
+{
 }

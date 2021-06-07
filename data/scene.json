@@ -7,6 +7,21 @@
 	"camera_fov": 60,
 	"entities": [
 		{
+			"name": "reflection_probe1",
+			"type": "REFLECTION_PROBE",
+			"position": [ 113, 100, 240 ]
+		},
+		{
+			"name": "reflection_probe2",
+			"type": "REFLECTION_PROBE",
+			"position": [ 138, 64, -148 ]
+		},
+		{
+			"name": "reflection_probe3",
+			"type": "REFLECTION_PROBE",
+			"position": [ -28, 56, 65 ]
+		},
+		{
 			"name": "floor",
 			"type": "PREFAB",
 			"filename": "prefabs/floor.glb",
