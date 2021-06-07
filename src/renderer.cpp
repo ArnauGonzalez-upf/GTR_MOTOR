@@ -36,6 +36,8 @@ Renderer::Renderer()
 	hdr_active = true;
 	show_gbuffers = false;
 	activate_ssao = true;
+	activate_irr = false;
+	irr_3lerp = false;
 
 	gbuffers_fbo = new FBO();
 	atlas = NULL;
@@ -648,6 +650,7 @@ void Renderer::renderMeshWithMaterial(const Matrix44& model, Mesh* mesh, GTR::Ma
 			irradiance = true;
 			shader->setUniform("u_invmodel_grid", grid->inv_model);
 			shader->setUniform("u_irr_dims", grid->dim);
+			shader->setUniform("u_trilinear", irr_3lerp);
 			shader->setTexture("u_texture_probes", probes_texture, 6);
 		}
 		shader->setUniform("u_irr", irradiance);
@@ -1034,8 +1037,9 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 
 		hdr_shader->enable();
 		hdr_shader->setUniform("u_hdr", false);
+		gbuffers_fbo->color_textures[3]->toViewport(hdr_shader);
 
-		glViewport(0, 0, width * 0.5, height * 0.5);
+		/*glViewport(0, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
@@ -1044,11 +1048,11 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[1]->toViewport();
 
-		//glViewport(0, height * 0.5, width * 0.5, height * 0.5);
-		//Shader* depth_shader = Shader::Get("depth");
-		//depth_shader->enable();
-		//depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
-		//illumination_fbo->depth_texture->toViewport(depth_shader);
+		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
+		Shader* depth_shader = Shader::Get("depth");
+		depth_shader->enable();
+		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
+		illumination_fbo->depth_texture->toViewport(depth_shader);*/
 	}
 }
 

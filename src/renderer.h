@@ -69,7 +69,9 @@ namespace GTR {
 		bool show_omr; // to show only AO in material properties
 		bool activate_ssao; // to activate generating AO instead of using the texture
 		bool hdr_active;
+		bool activate_irr;
 		bool update_irradiance;
+		bool irr_3lerp; //to activate trilinear interpolation (irradiance)
 
 		int depth_light;
 		int shadow_count; //counter for shadows.

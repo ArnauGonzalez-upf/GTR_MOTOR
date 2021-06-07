@@ -353,6 +353,14 @@ void Application::renderDebugGUI(void)
 			if (!renderer->ssao->plus)
 				renderer->ssao->blur = false;
 		}
+		ImGui::Checkbox("Irradiance", &renderer->activate_irr);
+		if (renderer->activate_irr)
+		{
+			//update probes if they have never been updated
+			if (!renderer->probes_texture)
+				renderer->updateProbes(scene);
+			ImGui::Checkbox("Trilinear", &renderer->irr_3lerp);
+		}
 	}
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
