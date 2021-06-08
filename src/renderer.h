@@ -72,6 +72,7 @@ namespace GTR {
 		bool activate_irr;
 		bool update_irradiance;
 		bool irr_3lerp; //to activate trilinear interpolation (irradiance)
+		bool reflections; //to activate reflections
 
 		int depth_light;
 		int shadow_count; //counter for shadows.

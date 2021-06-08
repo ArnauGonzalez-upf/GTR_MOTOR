@@ -61,6 +61,8 @@ Renderer::Renderer()
 		GL_RGB,       //four channels
 		GL_FLOAT,//half float
 		false);
+
+	reflections = false;
 }
 
 //renders all the prefab
@@ -646,6 +648,11 @@ void Renderer::renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* s
 	//this is used to say which is the alpha threshold to what we should not paint a pixel on the screen (to cut polygons according to texture alpha)
 	shader->setUniform("u_alpha_cutoff", material->alpha_mode == GTR::eAlphaMode::MASK ? material->alpha_cutoff : 0);
 
+	if (reflections)
+	{
+		shader->setTexture("u_environment_texture", call.probe->cubemap, 11);
+	}
+	shader->setUniform("u_reflections", reflections);
 
 	if (pipeline == FORWARD && light_mode == MULTI || pipeline == DEFERRED_ALPHA)
 	{
@@ -712,6 +719,16 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader, e
 
 	shader->setUniform("u_pcf", pcf);
 
+	bool irradiance = false;
+	if (probes_texture) {
+		irradiance = true;
+		shader->setUniform("u_invmodel_grid", grid->inv_model);
+		shader->setUniform("u_irr_dims", grid->dim);
+		shader->setUniform("u_trilinear", irr_3lerp);
+		shader->setTexture("u_texture_probes", probes_texture, 6);
+	}
+	shader->setUniform("u_irr", activate_irr);
+
 	for (int i = 0; i < lights.size(); ++i)
 	{
 		LightEntity* light = lights[i];
@@ -726,7 +743,11 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader, e
 				else
 					glEnable(GL_BLEND);
 			}
+
 			shader->setVector3("u_ambient_light", Vector3(0, 0, 0));
+			shader->setUniform("u_irr", false);
+			shader->setUniform("u_reflections", false);
+
 			if (pipeline == DEFERRED)
 			{
 				shader->setUniform("u_emissive", false);
@@ -832,6 +853,16 @@ void Renderer::renderSinglePass(Shader* shader, Mesh* mesh)
 		shadow_proj[i] = light->camera->viewprojection_matrix;
 		light_uvs[i] = light->uvs;
 	}
+
+	bool irradiance = false;
+	if (probes_texture) {
+		irradiance = true;
+		shader->setUniform("u_invmodel_grid", grid->inv_model);
+		shader->setUniform("u_irr_dims", grid->dim);
+		shader->setUniform("u_trilinear", irr_3lerp);
+		shader->setTexture("u_texture_probes", probes_texture, 6);
+	}
+	shader->setUniform("u_irr", activate_irr);
 
 	//Passing all the vectors to the GPU
 	shader->setMatrix44Array("u_shadow_viewproj", shadow_proj, max_lights);

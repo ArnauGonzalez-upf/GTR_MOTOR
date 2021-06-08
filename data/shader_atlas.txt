@@ -695,11 +695,18 @@ uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D u_texture_atlas;
 
+uniform mat4 u_invmodel_grid;
+uniform vec3 u_irr_dims;
+uniform bool u_trilinear;
+uniform sampler2D u_texture_probes;
+uniform bool u_irr;
+
 out vec4 FragColor;
 
 #include "normal_functions"
 #include "shadow_atlas_function"
 #include "PBR_direct_functions"
+#include "irradiance_functions"
 
 void main()
 {
@@ -746,7 +753,19 @@ void main()
 	vec3 V = normalize(u_camera_position - v_world_position);
 
 	//Summing the ambient light because it always is
-	light += u_ambient_light;
+	vec3 irradiance;
+	if (u_irr)
+		if(u_trilinear)
+			irradiance = compute_irr_3lerp(N, v_world_position);
+		else
+			irradiance = compute_irr(N, v_world_position, false);
+
+	//Summing the ambient light because it always is
+	if (u_irr)
+		light+= irradiance;
+	else
+		light += u_ambient_light;
+
 	light *= occlusion;
 
 	for (int i = 0; i < MAX_LIGHTS; ++i)
@@ -844,6 +863,7 @@ in vec3 v_normal;
 in vec2 v_uv;
 
 uniform mat4 u_shadow_viewproj;
+uniform mat4 u_invmodel_grid;
 
 uniform vec3 u_ambient_light;
 uniform vec3 u_emissive;
@@ -852,6 +872,7 @@ uniform vec3 u_light_vector;
 uniform vec3 u_light_color;
 uniform vec4 u_color;
 uniform vec3 u_camera_position;
+uniform vec3 u_irr_dims;
 
 uniform int u_light_type;
 uniform int u_light_eq;
@@ -866,6 +887,7 @@ uniform float u_metallic;
 uniform float u_roughness;
 uniform float u_gamma;
 
+uniform bool u_reflections;
 uniform bool u_pcf;
 uniform bool u_shadows;
 
@@ -874,6 +896,8 @@ uniform sampler2D u_texture_em;
 uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D shadowmap;
+uniform sampler2D u_texture_probes;
+uniform samplerCube u_environment_texture;
 
 uniform bool u_deferred;
 uniform sampler2D u_depth_texture;
@@ -881,13 +905,15 @@ uniform sampler2D u_depth_texture;
 uniform bool u_ao;
 uniform sampler2D u_ao_texture;
 
-uniform samplerCube u_environment_texture;
+uniform bool u_irr;
+uniform bool u_trilinear;
 
 out vec4 FragColor;
 
 #include "normal_functions"
 #include "shadow_function"
 #include "PBR_direct_functions"
+#include "irradiance_functions"
 
 void main()
 {	
@@ -942,8 +968,20 @@ void main()
 	float spot_factor = 1.0;
 	float att_factor = 1.0;
 
+	//if there is probes texture, compute irradiance
+	vec3 irradiance;
+	if (u_irr)
+		if(u_trilinear)
+			irradiance = compute_irr_3lerp(N, v_world_position);
+		else
+			irradiance = compute_irr(N, v_world_position, false);
+
 	//Summing the ambient light because it always is
-	light += u_ambient_light;
+	if (u_irr)
+		light+= irradiance;
+	else
+		light += u_ambient_light;
+
 	light *= occlusion;
 	
 	//depending on the light type...
@@ -1014,6 +1052,20 @@ void main()
 	//Applying light to color
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
+
+	if (u_reflections)
+	{
+		vec3 reflection;
+		vec3 R;
+		if(u_reflections)
+		{
+			R = reflect(V,N);
+			//compute the reflection
+			reflection = baseColor.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
+			color.xyz += reflection;
+		}
+	}
+
 	FragColor = color;
 }
 
@@ -1146,7 +1198,7 @@ void main()
 	vec3 V = v_world_position - u_camera_position;
 	vec3 R;
 	if(u_reflections){
-		R = reflect(-V,N);
+		R = reflect(V,N);
 		//compute the reflection
 		reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
 		emissive.xyz += reflection;
