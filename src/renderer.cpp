@@ -147,7 +147,7 @@ void Renderer::updateLight(LightEntity* light, Camera* camera)
 void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h)
 {
 	if (gbuffers_fbo->fbo_id == 0) {
-		Texture* albedo = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
+		Texture* albedo = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
 		Texture* normals = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
 		Texture* extra = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
 		Texture* irradiance = new Texture(w, h, GL_RGB, GL_HALF_FLOAT);
@@ -624,10 +624,11 @@ void Renderer::renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* s
 	shader->setUniform("u_texture_metallic_roughness", texture_met_rough, 2);
 	shader->setUniform("u_texture_normals", texture_norm, 3);
 
-	if (call.probe->cubemap)
-		shader->setUniform("u_environment_texture", call.probe->cubemap, 13);
-	else
-		shader->setUniform("u_environment_texture",Texture::getWhiteTexture(), 13);
+	if(call.probe)
+		if (call.probe->cubemap)
+			shader->setUniform("u_environment_texture", call.probe->cubemap, 13);
+		else
+			shader->setUniform("u_environment_texture",Texture::getWhiteTexture(), 13);
 
 	shader->setUniform("u_deferred", (bool)(pipeline == DEFERRED_ALPHA));
 
@@ -1081,7 +1082,7 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[3]->toViewport(hdr_shader);
+		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[1]->toViewport();
@@ -1235,6 +1236,8 @@ void Renderer::passDeferredUniforms(Shader* sh, bool first_pass, Camera* camera,
 		sh->setUniform("u_emissive", true);
 		sh->setUniform("u_back", true);
 		sh->setUniform("u_ao", activate_ssao);
+		sh->setUniform("u_irr_texture", gbuffers_fbo->color_textures[3], 11);
+		sh->setUniform("u_irr", activate_irr);
 	}
 	else {
 		sh->setVector3("u_ambient_light", Vector3(0, 0, 0));

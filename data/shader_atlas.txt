@@ -1014,16 +1014,7 @@ void main()
 	//Applying light to color
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
-
-	vec3 R = reflect(-V,N);
-	//compute the reflection
-	vec3 reflection = /*baseColor.xyz */ textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * 0.1;
-	//reflection += color.xyz;
-
-	//set the metalness as alpha
-	FragColor = vec4( reflection, metallic );
-
-	//FragColor = color;
+	FragColor = color;
 }
 
 \shadowmap.fs
@@ -1063,6 +1054,7 @@ uniform vec4 u_color;
 
 uniform vec3 u_emissive;
 uniform vec3 u_irr_dims;
+uniform vec3 u_camera_position;
 
 uniform float u_alpha_cutoff;
 uniform float u_metallic;
@@ -1077,6 +1069,7 @@ uniform sampler2D u_texture_em;
 uniform sampler2D u_texture_metallic_roughness;
 uniform sampler2D u_texture_normals;
 uniform sampler2D u_texture_probes;
+uniform samplerCube u_environment_texture;
 
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalColor;
@@ -1148,6 +1141,18 @@ void main()
 		else
 			irradiance = compute_irr(N, v_world_position, false);
 
+	bool u_reflections = true;
+	vec3 reflection;
+	vec3 V = v_world_position - u_camera_position;
+	vec3 R;
+	if(u_reflections){
+		R = reflect(-V,N);
+		//compute the reflection
+		reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
+		emissive.xyz += reflection;
+
+	}
+
 	FragColor = vec4(color.xyz, roughness);
 	NormalColor = vec4(N * 0.5 + vec3(0.5), material_properties.r);
 	ExtraColor = vec4(emissive.xyz, metallic);
@@ -1166,6 +1171,7 @@ uniform sampler2D shadowmap;
 uniform sampler2D u_texture_normals;
 uniform sampler2D u_ao_texture;
 uniform sampler2D u_probes_texture;
+uniform sampler2D u_irr_texture;
 
 uniform mat4 u_inverse_viewprojection;
 uniform mat4 u_inv_viewmatrix;
@@ -1188,6 +1194,7 @@ uniform int u_light_eq;
 uniform int u_light_type;
 uniform bool u_emissive;
 uniform bool u_ao;
+uniform bool u_irr;
 
 uniform float u_light_cutoff;
 uniform float u_light_maxdist;
@@ -1275,7 +1282,12 @@ void main()
     	//now do your illumination using worldpos and the normal...
 	//Summing the ambient light because it always is
 	vec3 light = vec3(0.0);
-	light += u_ambient_light;
+	vec3 irradiance = texture(u_irr_texture, uv).xyz;
+	if (u_irr)
+		light+= irradiance;
+	else
+		light += u_ambient_light;
+
 	light *= occlusion;
 	
 	//depending on the light type...
