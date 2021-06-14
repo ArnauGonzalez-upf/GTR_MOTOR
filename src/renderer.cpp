@@ -208,6 +208,8 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
+
+
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
 }
@@ -478,8 +480,33 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 
-	renderProbes();
+	//renderProbes();
 
+	//illumination_fbo->unbind();
+
+	if (0)
+	{
+		//illumination_fbo->bind();
+
+		Mesh* quad = Mesh::getQuad();
+		Shader* shader = Shader::Get("volume");
+		shader->enable();
+
+		Matrix44 inv_vp = camera->viewprojection_matrix;
+		inv_vp.inverse();
+		shader->setUniform("u_camera_position", camera->eye);
+		shader->setUniform("u_inverse_viewprojection", inv_vp);
+		shader->setTexture("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+		directional_light->uploadLightParams(shader, true, hdr_gamma);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);//GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_DEPTH_TEST);
+
+		quad->render(GL_TRIANGLES);
+
+		glDisable(GL_BLEND);
+	}
 	illumination_fbo->unbind();
 }
 

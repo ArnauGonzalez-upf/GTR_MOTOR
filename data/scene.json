@@ -49,6 +49,13 @@
 			"scale": [ 0.4, 0.4, 0.4 ]
 		},
 		{
+			"name": "sponza",
+			"type": "PREFAB",
+			"filename": "prefabs/sponza/Sponza.gltf",
+			"position": [ 1000, 0, 500 ],
+			"scale": [ 40, 40, 40 ]
+		},
+		{
 			"name": "house",
 			"type": "PREFAB",
 			"filename": "prefabs/house_test/scene.gltf",
