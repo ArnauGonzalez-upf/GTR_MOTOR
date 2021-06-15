@@ -1062,7 +1062,7 @@ void main()
 		{
 			R = reflect(-V,N);
 			//compute the reflection
-			reflection = baseColor.xyz * textureLod( u_environment_texture, R, roughness * 8.0 ).xyz;
+			reflection = baseColor.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz;
 			color.xyz += reflection;
 		}
 	}

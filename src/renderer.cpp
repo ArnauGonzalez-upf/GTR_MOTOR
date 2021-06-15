@@ -39,6 +39,8 @@ Renderer::Renderer()
 	activate_irr = false;
 	irr_3lerp = false;
 
+	reflections_calculated = false;
+
 	gbuffers_fbo = new FBO();
 	atlas = NULL;
 	ssao = new SSAO(64, true);
@@ -207,7 +209,6 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
-
 
 
 	glDisable(GL_DEPTH_TEST);
@@ -394,7 +395,7 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 			renderMeshWithMaterial(calls[i], camera, scene, pipeline);
 	}
 
-	renderReflectionProbes(scene, camera);
+	//renderReflectionProbes(scene, camera);
 }
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
@@ -1451,6 +1452,8 @@ void GTR::Renderer::renderReflectionProbes(Scene* scene, Camera* camera)
 
 void GTR::Renderer::updateReflectionProbes(Scene* scene)
 {
+	std::cout << "hola";
+
 	Camera cam;
 	//set the fov to 90 and the aspect to 1
 	cam.setPerspective(90, 1, 0.1, 1000);

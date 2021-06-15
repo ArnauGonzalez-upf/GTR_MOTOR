@@ -96,6 +96,8 @@ namespace GTR {
 		FBO* irr_fbo;
 		SSAO* ssao;
 
+		bool reflections_calculated;
+
 		Renderer();
 
 		//update the light viewproj matrix and parameters

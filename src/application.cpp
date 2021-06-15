@@ -361,10 +361,15 @@ void Application::renderDebugGUI(void)
 				renderer->updateProbes(scene);
 			ImGui::Checkbox("Trilinear", &renderer->irr_3lerp);
 		}
+
 		ImGui::Checkbox("Reflections", &renderer->reflections);
 		if (renderer->reflections)
 		{
-			renderer->updateReflectionProbes(scene);
+			if (!renderer->reflections_calculated)
+			{
+				renderer->reflections_calculated = true;
+				renderer->updateReflectionProbes(scene);
+			}
 		}
 
 	}
