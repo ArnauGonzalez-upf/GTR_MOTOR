@@ -1841,10 +1841,10 @@ void main()
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 
-	float offset = wang_hash(int(gl_FragCoord.x + 1024.0 * gl_FragCoord.y));
+	//float offset = wang_hash(int(gl_FragCoord.x + 1024.0 * gl_FragCoord.y));
 
 	vec3 ray_dir = (worldpos - u_camera_position);
-	float dist = length(ray_dir);
+	float dist = min(length(ray_dir), 500.0);
 	ray_dir /= dist;
 	float step_dist = dist / float(SAMPLES);
 	float air_density = 0.001;

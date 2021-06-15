@@ -485,7 +485,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 
 	//illumination_fbo->unbind();
 
-	if (0)
+	if(1)
 	{
 		//illumination_fbo->bind();
 
