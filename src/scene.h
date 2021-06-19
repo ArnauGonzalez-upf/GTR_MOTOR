@@ -22,7 +22,7 @@ namespace GTR {
 		CAMERA = 3,
 		IRRADIANCE_GRID = 4,
 		PROBE = 5,
-		DECALL = 6,
+		DECAL = 6,
 		REFLECTION_PROBE = 7
 	};
 
@@ -127,6 +127,15 @@ namespace GTR {
 		virtual void configure(cJSON* json);
 		bool lightBounding(Camera* camera);
 		void uploadLightParams(Shader* sh, bool linearize, float& hdr_gamma);
+	};
+
+	class DecalEntity : public GTR::BaseEntity
+	{
+	public:
+		Texture* albedo;
+
+		DecalEntity();
+		virtual void configure(cJSON* json);
 	};
 
 	//contains all entities of the scene

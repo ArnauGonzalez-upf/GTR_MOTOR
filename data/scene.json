@@ -49,11 +49,11 @@
 			"scale": [ 0.4, 0.4, 0.4 ]
 		},
 		{
-			"name": "sponza",
-			"type": "PREFAB",
-			"filename": "prefabs/sponza/Sponza.gltf",
-			"position": [ 1000, 0, 500 ],
-			"scale": [ 40, 40, 40 ]
+			"name": "decal",
+			"type": "DECAL",
+			"albedo": "textures/godspeed.png",
+			"position": [ 0, 0, 0 ],
+			"scale": [ 10, 10, 10 ]
 		},
 		{
 			"name": "house",

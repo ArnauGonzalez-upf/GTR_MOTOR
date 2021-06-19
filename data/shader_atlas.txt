@@ -22,6 +22,7 @@ probe basic.vs probe.fs
 skybox basic.vs skybox.fs
 reflection_probe basic.vs reflection_probe.fs
 volume quad.vs volume.fs
+decals basic.vs decals.fs
 
 
 \sh_functions
@@ -1810,20 +1811,20 @@ uniform mat4 u_invmodel_grid;
 uniform vec3 u_irr_dims;
 uniform int u_num_probes;
 
-#define SAMPLES 64
+#define SAMPLES 128
 
 //pass here all the uniforms required for illumination...
 out vec4 FragColor;
 
 #include "shadow_function"
 
-float wang_hash(int seed) {
-    seed = (seed ^ 61) ^ (seed >> 16);
-    seed *= 9;
-    seed = seed ^ (seed >> 4);
-    seed *= 0x27d4eb2d;
-    seed = seed ^ (seed >> 15);
-    return float(seed % 2147483647) / float(2147483647);
+float ComputeScattering(float lightDotView)
+{
+	float G_SCATTERING = 0.7f;
+	float PI = 3.14;
+	float result = 1.0f - G_SCATTERING * G_SCATTERING;
+	result /= (4.0f * PI * pow(1.0f + G_SCATTERING * G_SCATTERING - (2.0f * G_SCATTERING) *      lightDotView, 1.5f));
+	return result;
 }
 
 void main()
@@ -1834,34 +1835,28 @@ void main()
    	//reconstruct world position from depth and inv. viewproj
     	float depth = texture( u_depth_texture, uv ).x;
 
-	//if (depth == 1)
-	//	discard;
-
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+	vec3 startpos = u_camera_position;
 
-	//float offset = wang_hash(int(gl_FragCoord.x + 1024.0 * gl_FragCoord.y));
-
-	vec3 ray_dir = (worldpos - u_camera_position);
+	vec3 ray_dir = (worldpos - startpos);
 	float dist = min(length(ray_dir), 500.0);
+
 	ray_dir /= dist;
 	float step_dist = dist / float(SAMPLES);
 	float air_density = 0.001;
-	
+
 	vec3 current_pos = u_camera_position;
 	vec3 ray_offset = (ray_dir) * step_dist;
 
-	//float shadow_factor = 1.0;
-
+	vec3 accumFog = vec3(0.0f);
 	float transparency = 1.0;
 
 	vec3 color = vec3(0.0);
 	for(int i = 0; i < SAMPLES; ++i)
 	{
     		//evaluate contribution
-    		//...
-
 		float pixel_transparency = air_density * step_dist;
 	
 		transparency -= pixel_transparency;
@@ -1869,7 +1864,7 @@ void main()
 		vec4 v_lightspace_position = u_shadow_viewproj * vec4(current_pos, 1.0);
 
 		float shadow_factor = shadow_fact(v_lightspace_position);
-		color += shadow_factor * u_light_color *  pixel_transparency;
+		color += shadow_factor * u_light_color * pixel_transparency;
 
 		if (transparency < 0.001)
 			break;
@@ -1877,6 +1872,61 @@ void main()
     		//advance to next position
     		current_pos.xyz += ray_offset;
 	}
-
+	
 	FragColor = vec4(color, transparency);
+
+}
+
+\decals.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_color_texture;
+uniform sampler2D u_normal_texture;
+uniform sampler2D u_extra_texture;
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_decal_texture;
+
+uniform mat4 u_inverse_viewprojection;
+uniform mat4 u_inv_viewmatrix;
+uniform vec2 u_iRes;
+uniform mat4 u_iModel;
+
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 NormalColor;
+layout(location = 2) out vec4 ExtraColor;
+
+void main()
+{
+	//extract uvs from pixel screenpos
+    	vec2 uv = gl_FragCoord.xy * u_iRes;
+  
+    	vec4 colorbuffer = texture( u_color_texture, uv );
+	vec4 normalbuffer = texture( u_normal_texture, uv );
+	vec4 extrabuffer = texture( u_extra_texture, uv );
+
+    	//normals must be converted from 0..1 to -1..+1
+    	vec3 N = texture( u_normal_texture, uv ).xyz * 2.0 - vec3(1.0);
+    	N = normalize(N); //always normalize in case of data loss
+
+   	//reconstruct world position from depth and inv. viewproj
+    	float depth = texture( u_depth_texture, uv ).x;	
+
+    	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+    	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+    	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+
+	vec3 localpos = (u_iModel * vec4( worldpos, 1.0) ).xyz;
+
+	uv = localpos.xz * 0.5 + vec2(0.5);
+	vec4 decal = texture(u_decal_texture, uv);
+
+	if (decal.a < 0.5 || uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+		discard;
+
+	FragColor = vec4(decal.xyz,colorbuffer.a);
+	NormalColor = normalbuffer;
+	ExtraColor = extrabuffer;
 }

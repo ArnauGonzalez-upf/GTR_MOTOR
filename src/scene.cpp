@@ -155,6 +155,8 @@ GTR::BaseEntity* GTR::Scene::createEntity(std::string type)
 		return new GTR::ReflectionProbeEntity();
 	if (type == "IRRADIANCE_GRID")
 		return new GTR::IrradianceGrid();
+	if (type == "DECAL")
+		return new GTR::DecalEntity();
     return NULL;
 }
 
@@ -430,4 +432,17 @@ void GTR::ReflectionProbeEntity::renderInMenu()
 
 void GTR::ReflectionProbeEntity::configure(cJSON* json)
 {
+}
+
+GTR::DecalEntity::DecalEntity()
+{
+	entity_type = DECAL;
+	albedo = NULL;
+}
+
+void GTR::DecalEntity::configure(cJSON* json)
+{
+	std::string filename = readJSONString(json, "albedo", "");
+	if (filename.size())
+		albedo = Texture::Get((std::string("data/") + filename).c_str());
 }
