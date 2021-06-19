@@ -24,7 +24,6 @@ reflection_probe basic.vs reflection_probe.fs
 volume quad.vs volume.fs
 decals basic.vs decals.fs
 
-
 \sh_functions
 const float Pi = 3.141592654;
 const float CosineA0 = Pi;
@@ -1055,7 +1054,7 @@ void main()
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
 
-	if (u_reflections)
+	if (u_reflections && u_deferred && color.a < 0.7)
 	{
 		vec3 reflection;
 		vec3 R;
@@ -1202,7 +1201,10 @@ void main()
 	if(u_reflections){
 		R = reflect(-V,N);
 		//compute the reflection
-		reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
+		if (color.a < 0.7)
+			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * 0.5;
+		else
+			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic * 0.5;
 		emissive.xyz += reflection;
 
 	}
@@ -1616,45 +1618,6 @@ void main()
 	FragColor = vec4(color, color, color, 1.0);
 }
 
-\hdr.fs
-
-#version 330 core 
-
-in vec2 v_uv;
-
-uniform sampler2D u_texture;
-uniform float u_average_lum;
-uniform float u_lumwhite2;
-uniform float u_scale;
-uniform float u_igamma;
-
-uniform bool u_hdr;
-
-out vec4 FragColor;
-
-void main()
-{
-
-	vec4 color = texture2D( u_texture, v_uv );
-	vec3 rgb = color.xyz;
-	
-	if (u_hdr)
-	{
-		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-  		float L_HDR = (u_scale / u_average_lum) * lum;
-		float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
-
-    		rgb = (rgb / lum) * Ld;
-    		rgb = max(rgb,vec3(0.001));
-	}
-
-    	rgb = pow( rgb, vec3( u_igamma ) ); //pelpull
-
-	
-	FragColor = vec4(rgb, 1.0);
-
-}
-
 \probe.fs
 
 #version 330 core
@@ -1818,13 +1781,33 @@ out vec4 FragColor;
 
 #include "shadow_function"
 
-float ComputeScattering(float lightDotView)
+float dither4x4(vec2 position)
 {
-	float G_SCATTERING = 0.7f;
-	float PI = 3.14;
-	float result = 1.0f - G_SCATTERING * G_SCATTERING;
-	result /= (4.0f * PI * pow(1.0f + G_SCATTERING * G_SCATTERING - (2.0f * G_SCATTERING) *      lightDotView, 1.5f));
-	return result;
+  int x = int(mod(position.x, 4.0));
+  int y = int(mod(position.y, 4.0));
+  int index = x + y * 4;
+  float limit = 0.0;
+
+  if (x < 8) {
+    if (index == 0) limit = 0.0f;
+    if (index == 1) limit = 0.5f;
+    if (index == 2) limit = 0.125f;
+    if (index == 3) limit = 0.625f;
+    if (index == 4) limit = 0.75f;
+    if (index == 5) limit = 0.22f;
+    if (index == 6) limit = 0.875f;
+    if (index == 7) limit = 0.375f;
+    if (index == 8) limit = 0.1875f;
+    if (index == 9) limit = 0.6875f;
+    if (index == 10) limit = 0.0625f;
+    if (index == 11) limit = 0.5625f;
+    if (index == 12) limit = 0.9375f;
+    if (index == 13) limit = 0.4375f;
+    if (index == 14) limit = 0.8125f;
+    if (index == 15) limit = 0.3125;
+  }
+
+  return limit;
 }
 
 void main()
@@ -1838,19 +1821,18 @@ void main()
     	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
     	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
     	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
-	vec3 startpos = u_camera_position;
 
-	vec3 ray_dir = (worldpos - startpos);
-	float dist = min(length(ray_dir), 500.0);
-
+	vec3 ray_dir = (worldpos - u_camera_position);
+	float dist = min(length(ray_dir), 2000.0);
 	ray_dir /= dist;
 	float step_dist = dist / float(SAMPLES);
 	float air_density = 0.001;
 
-	vec3 current_pos = u_camera_position;
+	vec3 startpos = u_camera_position;// + vec3(step_dist * dither4x4(v_uv));
+	
+	vec3 current_pos = startpos;
 	vec3 ray_offset = (ray_dir) * step_dist;
 
-	vec3 accumFog = vec3(0.0f);
 	float transparency = 1.0;
 
 	vec3 color = vec3(0.0);
@@ -1858,7 +1840,7 @@ void main()
 	{
     		//evaluate contribution
 		float pixel_transparency = air_density * step_dist;
-	
+
 		transparency -= pixel_transparency;
 
 		vec4 v_lightspace_position = u_shadow_viewproj * vec4(current_pos, 1.0);
@@ -1873,7 +1855,10 @@ void main()
     		current_pos.xyz += ray_offset;
 	}
 	
-	FragColor = vec4(color, transparency);
+	if (dist < 500)
+		FragColor = vec4(color, transparency);
+	else
+		FragColor = vec4(color, depth - transparency);
 
 }
 
@@ -1929,4 +1914,42 @@ void main()
 	FragColor = vec4(decal.xyz,colorbuffer.a);
 	NormalColor = normalbuffer;
 	ExtraColor = extrabuffer;
+}
+
+\hdr.fs
+
+#version 330 core 
+
+in vec2 v_uv;
+
+uniform sampler2D u_texture;
+uniform float u_average_lum;
+uniform float u_lumwhite2;
+uniform float u_scale;
+uniform float u_igamma;
+
+uniform bool u_hdr;
+
+out vec4 FragColor;
+
+void main()
+{
+
+	vec4 color = texture2D( u_texture, v_uv );
+	vec3 rgb = color.xyz;
+	
+	if (u_hdr)
+	{
+		float lum = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
+  		float L_HDR = (u_scale / u_average_lum) * lum;
+		float Ld = (L_HDR * (1.0 + L_HDR / u_lumwhite2)) / (1.0 + L_HDR);
+
+    		rgb = (rgb / lum) * Ld;
+    		rgb = max(rgb,vec3(0.001));
+	}
+
+    	rgb = pow( rgb, vec3( u_igamma ) ); //pelpull
+	
+	FragColor = vec4(rgb, 1.0);
+
 }

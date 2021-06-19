@@ -70,6 +70,13 @@
 			"scale": [ 0.5, 0.5, 0.5 ]
 		},
 		{
+			"name": "trash",
+			"type": "PREFAB",
+			"filename": "prefabs/sponza/Sponza.gltf",
+			"position": [ 500, 0, 1000 ],
+			"scale": [ 40, 40, 40 ]
+		},
+		{
 			"name": "tree",
 			"type": "PREFAB",
 			"filename": "prefabs/tree/scene.gltf",

@@ -469,8 +469,6 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
 {
-	//camera->far_plane = 600.0;
-
 	int w = Application::instance->window_width;
 	int h = Application::instance->window_height;
 
@@ -530,8 +528,16 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	passDeferredUniforms(sh, false, camera, scene, w, h);
 	renderMultiPassSphere(sh, camera);
 
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+
+	//renderProbes();
+
+	illumination_fbo->unbind();
+
 	//Alpha forward
 	if (!dithering) {
+		illumination_fbo->bind();
 
 		if (directional_light)
 			lights.push_back(directional_light);
@@ -547,16 +553,16 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 				renderMeshWithMaterial(calls[i], camera, scene, DEFERRED_ALPHA);
 		}
+
+		glDisable(GL_BLEND);
+		glDisable(GL_DEPTH_TEST);
+
+		//renderProbes();
+
+		illumination_fbo->unbind();
 	}
 
-	glDisable(GL_BLEND);
-	glDisable(GL_DEPTH_TEST);
-
-	//renderProbes();
-
-	illumination_fbo->unbind();
-
-	if (0)
+	if (1)
 	{
 		illumination_fbo->bind();
 
@@ -569,6 +575,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		shader->setUniform("u_camera_position", camera->eye);
 		shader->setUniform("u_inverse_viewprojection", inv_vp);
 		shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 4);
+		shader->setTexture("u_color_texture", illumination_fbo->color_textures[0], 0);
 		directional_light->uploadLightParams(shader, true, hdr_gamma);
 
 		glEnable(GL_BLEND);
@@ -578,6 +585,7 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		quad->render(GL_TRIANGLES);
 
 		glDisable(GL_BLEND);
+		glDisable(GL_DEPTH_TEST);
 		illumination_fbo->unbind();
 	}
 }
@@ -1556,35 +1564,3 @@ void GTR::Renderer::updateReflectionProbes(Scene* scene)
 		probe->cubemap->generateMipmaps();
 	}
 }
-
-//void updatecoeffs(float hdr[3], float domega, float x, float y, float z)
-//{
-//	for (int col = 0; col < 3; col++) { //for every color channel
-//		float c; // A different constant for each coefficient 
-//
-//		// L_{00}.  Note that Y_{00} = 0.282095 
-//		c = 0.282095;
-//		coeffs[0][col] += hdr[col] * c * domega;
-//
-//		// L_{1m}. -1 <= m <= 1.  The linear terms 
-//		c = 0.488603;
-//		coeffs[1][col] += hdr[col] * (c * y) * domega;   // Y_{1-1} = 0.488603 y
-//		coeffs[2][col] += hdr[col] * (c * z) * domega;   // Y_{10}  = 0.488603 z
-//		coeffs[3][col] += hdr[col] * (c * x) * domega;   // Y_{11}  = 0.488603 x
-//
-//		// The Quadratic terms, L_{2m} -2 <= m <= 2 **********
-//		// First, L_{2-2}, L_{2-1}, L_{21} corresponding to xy,yz,xz 
-//		c = 1.092548;
-//		coeffs[4][col] += hdr[col] * (c * x * y) * domega; // Y_{2-2} = 1.092548 xy
-//		coeffs[5][col] += hdr[col] * (c * y * z) * domega; // Y_{2-1} = 1.092548 yz
-//		coeffs[7][col] += hdr[col] * (c * x * z) * domega; // Y_{21}  = 1.092548 xz
-//
-//		// L_{20}.  Note that Y_{20} = 0.315392 (3z^2 - 1) 
-//		c = 0.315392;
-//		coeffs[6][col] += hdr[col] * (c * (3 * z * z - 1)) * domega;
-//
-//		// L_{22}.  Note that Y_{22} = 0.546274 (x^2 - y^2) 
-//		c = 0.546274;
-//		coeffs[8][col] += hdr[col] * (c * (x * x - y * y)) * domega;
-//	}
-//}
