@@ -24,8 +24,8 @@ Renderer::Renderer()
 
 	depth_light = 0;
 	hdr_scale = 1.0;
-	hdr_average_lum = 0.5;
-	hdr_white_balance = 1.25;
+	hdr_average_lum = 0.75;
+	hdr_white_balance = 10.0;
 	hdr_gamma = 2.2;
 
 	show_omr = false;
@@ -65,7 +65,10 @@ Renderer::Renderer()
 		false);
 
 	reflections = false;
+	volumetric = false;
 
+	show_reflection_probes = false;
+	show_probes = false;
 
 	decals_fbo = new FBO();
 }
@@ -216,10 +219,12 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 			renderMeshWithMaterial(calls[i], camera, scene, render_mode);
 	}
 
+	renderDecals(scene, camera);
+
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
-	gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
+	/*gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
 	gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
 	gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
 
@@ -230,7 +235,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 	decals_fbo->color_textures[0]->copyTo(gbuffers_fbo->color_textures[0]);
 	decals_fbo->color_textures[1]->copyTo(gbuffers_fbo->color_textures[1]);
-	decals_fbo->color_textures[2]->copyTo(gbuffers_fbo->color_textures[2]);
+	decals_fbo->color_textures[2]->copyTo(gbuffers_fbo->color_textures[2]);*/
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
@@ -378,7 +383,7 @@ void Renderer::renderSkybox(Texture* skybox, Camera* camera)
 
 	Matrix44 m;
 	m.translate(camera->eye.x, camera->eye.y, camera->eye.z);
-	m.scale(5, 5, 5);
+	m.scale(2, 2, 2);
 
 	shader->setUniform("u_model", m);
 	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
@@ -464,7 +469,7 @@ void Renderer::renderCalls(std::vector<RenderCall> calls, Camera* camera, Scene*
 			renderMeshWithMaterial(calls[i], camera, scene, pipeline);
 	}
 
-	//renderReflectionProbes(scene, camera);
+	renderReflectionProbes(scene, camera);
 }
 
 void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Scene* scene)
@@ -528,17 +533,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	passDeferredUniforms(sh, false, camera, scene, w, h);
 	renderMultiPassSphere(sh, camera);
 
-	glDisable(GL_BLEND);
-	glDisable(GL_DEPTH_TEST);
-
-	//renderProbes();
-
-	illumination_fbo->unbind();
-
 	//Alpha forward
 	if (!dithering) {
-		illumination_fbo->bind();
-
 		if (directional_light)
 			lights.push_back(directional_light);
 
@@ -553,41 +549,43 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 			if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 				renderMeshWithMaterial(calls[i], camera, scene, DEFERRED_ALPHA);
 		}
-
-		glDisable(GL_BLEND);
-		glDisable(GL_DEPTH_TEST);
-
-		//renderProbes();
-
-		illumination_fbo->unbind();
 	}
 
-	if (1)
+	if (volumetric)
 	{
-		illumination_fbo->bind();
-
-		Mesh* quad = Mesh::getQuad();
-		Shader* shader = Shader::Get("volume");
-		shader->enable();
-
-		Matrix44 inv_vp = camera->viewprojection_matrix;
-		inv_vp.inverse();
-		shader->setUniform("u_camera_position", camera->eye);
-		shader->setUniform("u_inverse_viewprojection", inv_vp);
-		shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 4);
-		shader->setTexture("u_color_texture", illumination_fbo->color_textures[0], 0);
-		directional_light->uploadLightParams(shader, true, hdr_gamma);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDisable(GL_DEPTH_TEST);
-
-		quad->render(GL_TRIANGLES);
-
-		glDisable(GL_BLEND);
-		glDisable(GL_DEPTH_TEST);
-		illumination_fbo->unbind();
+		volumetricDirectional(camera);
 	}
+
+	if (show_probes)
+		renderProbes();
+
+	if (show_reflection_probes)
+		renderReflectionProbes(scene, camera);
+
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+
+	illumination_fbo->unbind();
+}
+
+void Renderer::volumetricDirectional(Camera* camera)
+{
+	Mesh* quad = Mesh::getQuad();
+	Shader* shader = Shader::Get("volume");
+	shader->enable();
+
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	shader->setUniform("u_camera_position", camera->eye);
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 4);
+	directional_light->uploadLightParams(shader, true, hdr_gamma);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_DEPTH_TEST);
+
+	quad->render(GL_TRIANGLES);
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -870,8 +868,6 @@ void Renderer::renderMultiPass(Mesh* mesh, Material* material, Shader* shader, e
 		//render the mesh
 		mesh->render(GL_TRIANGLES);
 	}
-
-
 }
 
 void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
@@ -1192,13 +1188,13 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		Shader* omr_shader = Shader::Get("omr");
 
 		glViewport(0, 0, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[2]->toViewport(omr_shader); //metallic bottom left
+		gbuffers_fbo->color_textures[2]->toViewport(omr_shader); //metallic bottom left
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[1]->toViewport(omr_shader); //occlusion texture top right
+		gbuffers_fbo->color_textures[1]->toViewport(omr_shader); //occlusion texture top right
 
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[0]->toViewport(omr_shader); //roughness top left
+		gbuffers_fbo->color_textures[0]->toViewport(omr_shader); //roughness top left
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
 		if (activate_ssao)
@@ -1217,19 +1213,19 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		hdr_shader->setUniform("u_hdr", false);
 
 		glViewport(0, 0, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[0]->toViewport(hdr_shader);
+		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[2]->toViewport(hdr_shader);
+		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
-		decals_fbo->color_textures[1]->toViewport();
+		gbuffers_fbo->color_textures[1]->toViewport();
 
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 		Shader* depth_shader = Shader::Get("depth");
 		depth_shader->enable();
 		depth_shader->setUniform("u_camera_nearfar", Vector2(camera->near_plane, camera->far_plane));
-		decals_fbo->depth_texture->toViewport(depth_shader);
+		illumination_fbo->depth_texture->toViewport(depth_shader);
 	}
 }
 

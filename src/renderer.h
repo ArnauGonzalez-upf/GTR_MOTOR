@@ -74,6 +74,8 @@ namespace GTR {
 		bool irr_3lerp; //to activate trilinear interpolation (irradiance)
 		bool reflections; //to activate reflections
 		bool show_probes;
+		bool volumetric;
+		bool show_reflection_probes;
 
 		int depth_light;
 		int shadow_count; //counter for shadows.
@@ -153,6 +155,7 @@ namespace GTR {
 
 		void renderSkybox(Texture* skybox, Camera* camera);
 		void renderDecals(Scene* scene, Camera* camera);
+		void volumetricDirectional(Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

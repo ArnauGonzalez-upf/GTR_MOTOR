@@ -360,6 +360,7 @@ void Application::renderDebugGUI(void)
 			if (!renderer->probes_texture)
 				renderer->updateProbes(scene);
 			ImGui::Checkbox("Trilinear", &renderer->irr_3lerp);
+			ImGui::Checkbox("Show Irradiance Probes", &renderer->show_probes);
 		}
 
 		ImGui::Checkbox("Reflections", &renderer->reflections);
@@ -370,7 +371,11 @@ void Application::renderDebugGUI(void)
 				renderer->reflections_calculated = true;
 				renderer->updateReflectionProbes(scene);
 			}
+			ImGui::Checkbox("Reflection Probes", &renderer->show_reflection_probes);
+
 		}
+
+		ImGui::Checkbox("Volumetric Directional Light", &renderer->volumetric);
 
 	}
 

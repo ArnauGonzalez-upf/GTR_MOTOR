@@ -1160,6 +1160,13 @@ float dither4x4(vec2 position, float brightness)
   return brightness < limit ? 0.0 : 1.0;
 }
 
+// Fresnel term with colorized fresnel
+vec3 F_Schlick( const in float VoH, const in vec3 f0)
+{
+	float f = pow(1.0 - VoH, 5.0);
+	return f0 + (vec3(1.0) - f0) * f;
+}
+
 void main()
 {
 	vec4 color = texture( u_texture, v_uv );
@@ -1194,17 +1201,19 @@ void main()
 		else
 			irradiance = compute_irr(N, v_world_position, false);
 
+	//we compute the reflection in base to the color and the metalness
 	bool u_reflections = true;
 	vec3 reflection;
 	vec3 V = normalize(u_camera_position - v_world_position);
 	vec3 R;
+
 	if(u_reflections){
 		R = reflect(-V,N);
 		//compute the reflection
 		if (color.a < 0.7)
-			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * 0.5;
+			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz;
 		else
-			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic * 0.5;
+			reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
 		emissive.xyz += reflection;
 
 	}
@@ -1722,15 +1731,8 @@ void main()
 
 #version 330 core
 
-uniform sampler2D u_color_texture;
-uniform sampler2D u_normal_texture;
-uniform sampler2D u_extra_texture;
 uniform sampler2D u_depth_texture;
 uniform sampler2D shadowmap;
-uniform sampler2D u_texture_normals;
-uniform sampler2D u_ao_texture;
-uniform sampler2D u_probes_texture;
-uniform sampler2D u_irr_texture;
 
 uniform mat4 u_inverse_viewprojection;
 uniform mat4 u_inv_viewmatrix;
@@ -1743,36 +1745,15 @@ in vec2 v_uv;
 uniform mat4 u_shadow_viewproj;
 
 uniform vec3 u_camera_position;
-uniform vec3 u_ambient_light;
 uniform vec3 u_light_position;
 uniform vec3 u_light_vector;
 uniform vec3 u_light_color;
-uniform vec4 u_color;
 
-uniform int u_light_eq;
 uniform int u_light_type;
-uniform bool u_emissive;
-uniform bool u_ao;
-uniform bool u_irr;
 
-uniform float u_light_cutoff;
-uniform float u_light_maxdist;
-uniform float u_light_intensity;
-uniform float u_light_exp;
 uniform float u_shadow_bias;
-uniform float u_alpha_cutoff;
-uniform float u_ao_factor;
 
 uniform bool u_pcf;
-uniform bool u_shadows;
-uniform bool u_back;
-uniform bool u_hdr;
-
-uniform float u_gamma;
-
-uniform mat4 u_invmodel_grid;
-uniform vec3 u_irr_dims;
-uniform int u_num_probes;
 
 #define SAMPLES 128
 

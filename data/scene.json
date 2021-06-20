@@ -9,15 +9,10 @@
 		{
 			"name": "reflection_probe1",
 			"type": "REFLECTION_PROBE",
-			"position": [ 113, 100, 240 ]
+			"position": [ 232, 226, 61 ]
 		},
 		{
 			"name": "reflection_probe2",
-			"type": "REFLECTION_PROBE",
-			"position": [ 138, 64, -148 ]
-		},
-		{
-			"name": "reflection_probe3",
 			"type": "REFLECTION_PROBE",
 			"position": [ -28, 56, 65 ]
 		},
@@ -68,13 +63,6 @@
 			"filename": "prefabs/trash_can/scene.gltf",
 			"position": [ 140, 0, 110 ],
 			"scale": [ 0.5, 0.5, 0.5 ]
-		},
-		{
-			"name": "trash",
-			"type": "PREFAB",
-			"filename": "prefabs/sponza/Sponza.gltf",
-			"position": [ 500, 0, 1000 ],
-			"scale": [ 40, 40, 40 ]
 		},
 		{
 			"name": "tree",
@@ -131,7 +119,7 @@
 			"type": "LIGHT",
 			"position": [ 150, 300, 50 ],
 			"target": [ -80, 0, -50 ],
-			"color": [ 0.1, 0.2, 0.4 ],
+			"color": [ 0.353, 0.325, 0.247 ],
 			"intensity": 30.0,
 			"area_size": 1500,
 			"max_dist": 1000,
