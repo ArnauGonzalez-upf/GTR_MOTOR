@@ -24,7 +24,7 @@ Renderer::Renderer()
 
 	depth_light = 0;
 	hdr_scale = 1.0;
-	hdr_average_lum = 0.75;
+	hdr_average_lum = 2.5;
 	hdr_white_balance = 10.0;
 	hdr_gamma = 2.2;
 
@@ -157,7 +157,7 @@ void Renderer::updateLight(LightEntity* light, Camera* camera)
 void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Scene* scene, int& w, int& h)
 {
 	if (gbuffers_fbo->fbo_id == 0) {
-		Texture* albedo = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
+		Texture* albedo = new Texture(w, h, GL_RGBA, GL_FLOAT);
 		Texture* normals = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
 		Texture* extra = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
 		Texture* irradiance = new Texture(w, h, GL_RGB, GL_HALF_FLOAT);

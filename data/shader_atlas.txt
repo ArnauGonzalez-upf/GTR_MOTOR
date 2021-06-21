@@ -1116,6 +1116,7 @@ uniform float u_gamma;
 
 uniform bool u_irr;
 uniform bool u_trilinear;
+uniform bool u_reflections;
 
 uniform sampler2D u_texture;
 uniform sampler2D u_texture_em;
@@ -1202,7 +1203,6 @@ void main()
 			irradiance = compute_irr(N, v_world_position, false);
 
 	//we compute the reflection in base to the color and the metalness
-	bool u_reflections = true;
 	vec3 reflection;
 	vec3 V = normalize(u_camera_position - v_world_position);
 	vec3 R;
@@ -1840,7 +1840,6 @@ void main()
 		FragColor = vec4(color, transparency);
 	else
 		FragColor = vec4(color, depth - transparency);
-
 }
 
 \decals.fs

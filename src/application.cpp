@@ -322,8 +322,8 @@ void Application::renderDebugGUI(void)
 	if (renderer->hdr_active)
 	{
 		ImGui::SliderFloat("HDR Scale", &renderer->hdr_scale, 0.1f, 5.0f);
-		ImGui::SliderFloat("HDR Average Luminance", &renderer->hdr_average_lum, 0.1f, 10.0f);
-		ImGui::SliderFloat("HDR White Balance", &renderer->hdr_white_balance, 0.1f, 10.0f);
+		ImGui::SliderFloat("HDR Average Luminance", &renderer->hdr_average_lum, 0.1f, 50.0f);
+		ImGui::SliderFloat("HDR White Balance", &renderer->hdr_white_balance, 0.1f, 50.0f);
 		ImGui::SliderFloat("HDR Gamma Correction", &renderer->hdr_gamma, 0.25f, 2.5f);
 	}
 
@@ -353,20 +353,23 @@ void Application::renderDebugGUI(void)
 			if (!renderer->ssao->plus)
 				renderer->ssao->blur = false;
 		}
-		ImGui::Checkbox("Irradiance", &renderer->activate_irr);
+
+		bool changed_irradiance = false;
+		changed_irradiance |= ImGui::Checkbox("Irradiance", &renderer->activate_irr);
 		if (renderer->activate_irr)
 		{
 			//update probes if they have never been updated
-			if (!renderer->probes_texture)
+			if (!renderer->probes_texture || changed_irradiance)
 				renderer->updateProbes(scene);
 			ImGui::Checkbox("Trilinear", &renderer->irr_3lerp);
 			ImGui::Checkbox("Show Irradiance Probes", &renderer->show_probes);
 		}
 
-		ImGui::Checkbox("Reflections", &renderer->reflections);
+		bool changed_reflections = false;
+		changed_reflections |= ImGui::Checkbox("Reflections", &renderer->reflections);
 		if (renderer->reflections)
 		{
-			if (!renderer->reflections_calculated)
+			if (changed_reflections)
 			{
 				renderer->reflections_calculated = true;
 				renderer->updateReflectionProbes(scene);
