@@ -98,6 +98,7 @@ namespace GTR {
 		FBO* reflections_fbo;
 		FBO* irr_fbo;
 		FBO* decals_fbo;
+		FBO* bloom_fbo;
 		SSAO* ssao;
 
 		bool reflections_calculated;
@@ -156,6 +157,8 @@ namespace GTR {
 		void renderSkybox(Texture* skybox, Camera* camera);
 		void renderDecals(Scene* scene, Camera* camera);
 		void volumetricDirectional(Camera* camera);
+
+		Texture* applyBloom(Camera* camera);
 	};
 
 	Texture* CubemapFromHDRE(const char* filename);

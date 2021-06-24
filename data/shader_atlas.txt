@@ -23,6 +23,8 @@ skybox basic.vs skybox.fs
 reflection_probe basic.vs reflection_probe.fs
 volume quad.vs volume.fs
 decals basic.vs decals.fs
+bloom quad.vs bloom.fs
+blur quad.vs gaussian_blur.fs
 
 \sh_functions
 const float Pi = 3.141592654;
@@ -1282,6 +1284,7 @@ uniform int u_num_probes;
 
 //pass here all the uniforms required for illumination...
 layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 BrightColor;
 
 #include "normal_functions"
 #include "shadow_function"
@@ -1903,6 +1906,7 @@ void main()
 in vec2 v_uv;
 
 uniform sampler2D u_texture;
+uniform sampler2D u_texture_bloom;
 uniform float u_average_lum;
 uniform float u_lumwhite2;
 uniform float u_scale;
@@ -1916,7 +1920,8 @@ void main()
 {
 
 	vec4 color = texture2D( u_texture, v_uv );
-	vec3 rgb = color.xyz;
+	vec3 bloomColor = texture(u_texture_bloom, v_uv).rgb;
+	vec3 rgb = color.xyz + bloomColor;
 	
 	if (u_hdr)
 	{
@@ -1932,4 +1937,74 @@ void main()
 	
 	FragColor = vec4(rgb, 1.0);
 
+}
+
+\bloom.fs
+
+#version 330 core
+
+layout(location = 0) out vec4 BrightColor;
+  
+in vec2 v_uv;
+
+uniform mat4 u_inverse_viewprojection;
+uniform mat4 u_viewprojection;
+
+uniform sampler2D u_depth_texture;
+uniform sampler2D u_normal_texture;
+
+uniform vec2 u_iRes;
+
+uniform sampler2D image;
+
+void main()
+{
+	//we want to center the sample in the center of the pixel
+	vec2 uv = v_uv;
+
+	vec3 FragColor = texture(image, v_uv).rgb;
+	float brightness = dot(FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    	if(brightness > 1.0)
+      		BrightColor = vec4(FragColor.rgb, 1.0);
+    	else
+        	BrightColor = vec4(0.0, 0.0, 0.0, 1.0);
+}
+
+
+\gaussian_blur.fs
+
+#version 330 core
+
+layout(location = 0) out vec4 FragColor;
+  
+in vec2 v_uv;
+
+uniform sampler2D image;
+  
+uniform bool horizontal;
+uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+
+void main()
+{             
+    vec2 TexCoords = v_uv;
+
+    vec2 tex_offset = 1.0 / textureSize(image, 0); // gets size of single texel
+    vec3 result = texture(image, TexCoords).rgb * weight[0]; // current fragment's contribution
+    if(horizontal)
+    {
+        for(int i = 1; i < 5; ++i)
+        {
+            result += texture(image, TexCoords + vec2(tex_offset.x * i, 0.0)).rgb * weight[i];
+            result += texture(image, TexCoords - vec2(tex_offset.x * i, 0.0)).rgb * weight[i];
+        }
+    }
+    else
+    {
+        for(int i = 1; i < 5; ++i)
+        {
+            result += texture(image, TexCoords + vec2(0.0, tex_offset.y * i)).rgb * weight[i];
+            result += texture(image, TexCoords - vec2(0.0, tex_offset.y * i)).rgb * weight[i];
+        }
+    }
+    FragColor = vec4(result, 1.0);
 }

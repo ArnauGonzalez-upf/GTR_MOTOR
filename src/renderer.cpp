@@ -49,7 +49,7 @@ Renderer::Renderer()
 	illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
 			1,            //one textures
 			GL_RGBA,       //four channels
-			GL_HALF_FLOAT,//half float
+			GL_FLOAT,//half float
 			true);        //add depth_texture)
 
 	irr_fbo = new FBO();
@@ -71,6 +71,13 @@ Renderer::Renderer()
 	show_probes = false;
 
 	decals_fbo = new FBO();
+
+	bloom_fbo = new FBO();
+	bloom_fbo->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGB,       //four channels
+		GL_FLOAT,//half float
+		false);
 }
 
 //renders all the prefab
@@ -250,6 +257,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 
 	hdr_shader->enable();
 	hdr_shader->setUniform("u_hdr", hdr_active);
+	hdr_shader->setTexture("u_texture_bloom", bloom_fbo->color_textures[0], 1);
 
 	//HDR, tone mapping and Gamma
 	if (hdr_active)
@@ -551,6 +559,38 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		}
 	}
 
+/*	if (1)
+	{
+		glDisable(GL_DEPTH_TEST);
+		Mesh* quad = Mesh::getQuad();
+		Shader* shader = Shader::Get("bloom");
+		shader->enable();
+
+		shader->setTexture("image", illumination_fbo->color_textures[0], 0);
+
+		quad->render(GL_TRIANGLES);
+		shader->disable();
+	}
+
+	if (1)
+	{
+		Texture* ao = NULL;
+		if (activate_ssao)
+			ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
+
+		Mesh* quad = Mesh::getQuad();
+		Shader* shader = Shader::Get("blur");
+		shader->enable();
+
+		for (int i = 0; i < 10; ++i)
+		{
+			shader->setTexture("image", illumination_fbo->color_textures[1], 0);
+			shader->setUniform("horizontal", true);
+
+			quad->render(GL_TRIANGLES);
+		}
+	}*/
+
 	if (volumetric)
 	{
 		volumetricDirectional(camera);
@@ -566,6 +606,8 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	glDisable(GL_DEPTH_TEST);
 
 	illumination_fbo->unbind();
+
+	applyBloom(camera);
 }
 
 void Renderer::volumetricDirectional(Camera* camera)
@@ -1213,13 +1255,13 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		hdr_shader->setUniform("u_hdr", false);
 
 		glViewport(0, 0, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[0]->toViewport(hdr_shader);
+		illumination_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
 		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[1]->toViewport();
+		bloom_fbo->color_textures[0]->toViewport();
 
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 		Shader* depth_shader = Shader::Get("depth");
@@ -1229,6 +1271,59 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 	}
 }
 
+Texture* Renderer::applyBloom(Camera* camera)
+{
+	Mesh* quad = Mesh::getQuad();
+
+	//start rendering inside the ssao texture
+	bloom_fbo->bind();
+
+	//get the shader for SSAO (remember to create it using the atlas)
+	Shader* shader = Shader::Get("bloom");
+	shader->enable();
+
+	//send info to reconstruct the world position
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	shader->setUniform("u_normal_texture", gbuffers_fbo->color_textures[1], 1);
+	shader->setTexture("u_depth_texture", gbuffers_fbo->depth_texture, 4);
+	shader->setTexture("image", illumination_fbo->color_textures[0], 0);
+
+	//we need the pixel size so we can center the samples 
+	shader->setUniform("u_iRes", Vector2(1.0 / (float)gbuffers_fbo->depth_texture->width, 1.0 / (float)gbuffers_fbo->depth_texture->height));
+
+	//we will need the viewprojection to obtain the uv in the depthtexture of any random position of our world
+	shader->setUniform("u_viewprojection", camera->viewprojection_matrix);
+
+	//render fullscreen quad
+	quad->render(GL_TRIANGLES);
+
+	bloom_fbo->unbind();
+
+	if (1)
+	{
+		//Mesh* quad = Mesh::getQuad();
+		Shader* shader = Shader::Get("blur");
+		shader->enable();
+		bool horizontal = true;
+
+		for (int i = 0; i < 10; ++i)
+		{
+			bloom_fbo->bind();
+			shader->setTexture("image", bloom_fbo->color_textures[0], 0);
+			shader->setUniform("horizontal", horizontal);
+
+			quad->render(GL_TRIANGLES);
+			bloom_fbo->unbind();
+			horizontal = !horizontal;
+		}
+
+		shader->disable();
+	}
+
+	return bloom_fbo->color_textures[0];
+}
 
 Texture* GTR::CubemapFromHDRE(const char* filename)
 {

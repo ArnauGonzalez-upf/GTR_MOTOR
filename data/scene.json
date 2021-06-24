@@ -86,7 +86,7 @@
 			"position": [ 0, 36, -16 ],
 			"angle": -45,
 			"color": [ 1, 0.9, 0.8 ],
-			"intensity": 50,
+			"intensity": 1000,
 			"max_dist": 1000,
 			"cone_angle": 45,
 			"cone_exp": 60,
