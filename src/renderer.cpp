@@ -28,7 +28,10 @@ Renderer::Renderer()
 	hdr_white_balance = 10.0;
 	hdr_gamma = 2.2;
 	
-	air_density = 0.001f;
+	air_density = 0.002f;
+	bloom_th = 1.0f;
+	bloom_soft_th = 0.5f;
+	blur_iterations = 5;
 
 	show_omr = false;
 	pcf = false;
@@ -87,6 +90,9 @@ Renderer::Renderer()
 		GL_RGBA,       //four channels
 		GL_FLOAT,//half float
 		false);        //add depth_texture)
+
+	ping = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
+	pong = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
 }
 
 //renders all the prefab
@@ -259,7 +265,57 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 {
+	float w = Application::instance->window_width;
+	float h = Application::instance->window_height;
+
 	renderScene(scene, camera);
+
+	illumination_fbo->color_textures[0]->copyTo(illumination_fbo_blurred->color_textures[0]);
+
+	Mesh* quad = Mesh::getQuad();
+	Shader* shader = Shader::Get("blur");
+	shader->enable();
+	bool horizontal = true;
+
+	for (int i = 0; i < blur_iterations; ++i)
+	{
+		illumination_fbo_blurred->bind();
+		shader->setTexture("image", illumination_fbo_blurred->color_textures[0], 15);
+		shader->setUniform("horizontal", horizontal);
+
+		quad->render(GL_TRIANGLES);
+		illumination_fbo_blurred->unbind();
+		horizontal = !horizontal;
+	}
+
+	shader->disable();
+
+	applyBloom(camera);
+
+	//first FX
+	FBO* fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	shader = Shader::Get("dof");
+	shader->enable();
+	shader->setTexture("focusTexture", illumination_fbo->color_textures[0], 0);
+	shader->setTexture("outOfFocusTexture", illumination_fbo_blurred->color_textures[0], 1);
+	shader->setTexture("u_depth_texture", gbuffers_fbo->depth_texture, 2);
+
+	//pass the inverse projection of the camera to reconstruct world pos.
+	Matrix44 inv_vp = camera->viewprojection_matrix;
+	inv_vp.inverse();
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	//pass the inverse window resolution, this may be useful
+	shader->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
+
+	shader->setUniform("nearFar", Vector2(camera->near_plane, camera->far_plane));
+
+	Vector3 front = camera->center - camera->eye;
+	Vector3 focal_point = camera->eye + focal_dist * front.normalize();
+	shader->setUniform("u_focus_point", focal_point);
+
+	pong->toViewport(shader);
+	fbo->unbind();
 
 	//and render the texture into the screen
 	Shader* hdr_shader = Shader::Get("hdr");
@@ -280,7 +336,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 
 	glDisable(GL_BLEND);
 
-	illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+	ping->toViewport(hdr_shader);
 
 	if (render_mode == DEFERRED && show_gbuffers)
 		showGbuffers(gbuffers_fbo, camera);
@@ -583,28 +639,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 	glDisable(GL_DEPTH_TEST);
 
 	illumination_fbo->unbind();
-
-	illumination_fbo->color_textures[0]->copyTo(illumination_fbo_blurred->color_textures[0]);
-
-	//Mesh* quad = Mesh::getQuad();
-	Shader* shader = Shader::Get("blur");
-	shader->enable();
-	bool horizontal = true;
-
-	for (int i = 0; i < 10; ++i)
-	{
-		illumination_fbo_blurred->bind();
-		shader->setTexture("image", illumination_fbo_blurred->color_textures[0], 15);
-		shader->setUniform("horizontal", horizontal);
-
-		quad->render(GL_TRIANGLES);
-		illumination_fbo_blurred->unbind();
-		horizontal = !horizontal;
-	}
-
-	shader->disable();
-
-	applyBloom(camera);
 }
 
 void Renderer::volumetricDirectional(Camera* camera)
@@ -759,7 +793,7 @@ void Renderer::renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* s
 	if (!texture)
 		texture = Texture::getWhiteTexture(); //a 1x1 white texture
 	if (!texture_met_rough)
-		texture_met_rough = Texture::getWhiteTexture(); //a 1x1 white texture
+		texture_met_rough = Texture::getGreenTexture(); //a 1x1 white texture
 
 	shader->setUniform("u_metallic", material->metallic_factor);
 	shader->setUniform("u_roughness", material->roughness_factor);
@@ -918,6 +952,7 @@ void Renderer::renderMultiPassSphere(Shader* sh, Camera* camera)
 	//first pass doesn't use blending)
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);
+	//glDepthFunc(GL_GEQUAL);
 	glEnable(GL_CULL_FACE);
 
 	sh->setVector3("u_ambient_light", Vector3(0, 0, 0));
@@ -1283,6 +1318,8 @@ Texture* Renderer::applyBloom(Camera* camera)
 	Shader* shader = Shader::Get("bloom");
 	shader->enable();
 	shader->setTexture("image", illumination_fbo_blurred->color_textures[0], 15);
+	shader->setUniform("th", bloom_th);
+	shader->setUniform("soft_th", bloom_soft_th);
 
 	//render fullscreen quad
 	quad->render(GL_TRIANGLES);

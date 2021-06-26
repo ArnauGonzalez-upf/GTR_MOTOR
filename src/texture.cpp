@@ -572,7 +572,7 @@ Texture* Texture::getGreenTexture()
 	static Texture* white = NULL;
 	if (white)
 		return white;
-	const Uint8 data[3] = { 0,255,0 };
+	const Uint8 data[3] = { 0,255,255 };
 	white = new Texture(1, 1, GL_RGB, GL_UNSIGNED_BYTE, true, (Uint8*)data);
 	return white;
 }

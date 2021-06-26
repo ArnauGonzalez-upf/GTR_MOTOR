@@ -77,6 +77,9 @@ namespace GTR {
 		bool volumetric;
 		bool show_reflection_probes;
 		float air_density;
+		float bloom_th;
+		float bloom_soft_th;
+		int blur_iterations;
 
 		int depth_light;
 		int shadow_count; //counter for shadows.
@@ -104,6 +107,11 @@ namespace GTR {
 		SSAO* ssao;
 
 		bool reflections_calculated;
+
+		Texture* ping;
+		Texture* pong;
+
+		float focal_dist;
 
 		Renderer();
 

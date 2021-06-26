@@ -1229,7 +1229,6 @@ void main()
 		//compute the reflection
 		reflection = color.xyz * kD * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz;
 		emissive.xyz += reflection;
-
 	}
 
 	FragColor = vec4(color.xyz, roughness);
@@ -1441,7 +1440,7 @@ void main()
 	color.xyz *= light;
 	color.xyz += emissive;
 
-	FragColor = vec4(color, 1.0);
+	FragColor = vec4(max(color,vec3(0.0)), 1.0);
 }
 
 \atlas.fs
@@ -1717,31 +1716,6 @@ void main()
 	FragColor = color;
 }
 
-\reflections.fs
-
-#version 330 core
-
-in vec3 v_normal;
-in vec3 v_world_position;
-
-uniform vec4 u_color;
-uniform samplerCube u_texture;
-uniform vec3 u_camera_position;
-
-out vec4 FragColor;
-
-#include "normal_functions"
-
-void main()
-{
-	vec3 R = reflect(V,N);
-	//compute the reflection
-	vec3 reflection = /*color.xyz * textureLod( u_environment_texture, R, roughness * 0.0 ).xyz;
-
-	//set the metalness as alpha
-	FragColor = vec4( reflection, metallic );
-}
-
 \volume.fs
 
 #version 330 core
@@ -1806,6 +1780,24 @@ float dither4x4(vec2 position)
   }
 
   return limit;
+}
+
+vec3 intersectSpheres(in vec3 origin, in vec3 direction)
+{
+	//returns the range along the ray overlapped by the volume
+	//t in the range (t0,t1), r(t) = eye + t*dir
+	vec2 intersect_box(vec3 orig, vec3 dir) {
+    	const vec3 box_min = vec3(-1);
+    	const vec3 box_max = vec3(1);
+    	vec3 inv_dir = 1.0 / dir;
+    	vec3 tmin_tmp = (box_min - orig) * inv_dir;
+    	vec3 tmax_tmp = (box_max - orig) * inv_dir;
+    	vec3 tmin = min(tmin_tmp, tmax_tmp);
+    	vec3 tmax = max(tmin_tmp, tmax_tmp);
+   	float t0 = max(tmin.x, max(tmin.y, tmin.z));
+    	float t1 = min(tmax.x, min(tmax.y, tmax.z));
+    	return vec2(t0, t1);
+}
 }
 
 void main()
@@ -1958,6 +1950,9 @@ layout(location = 0) out vec4 BrightColor;
   
 in vec2 v_uv;
 
+uniform float th;
+uniform float soft_th;
+
 uniform mat4 u_inverse_viewprojection;
 uniform mat4 u_viewprojection;
 
@@ -1968,33 +1963,22 @@ uniform vec2 u_iRes;
 
 uniform sampler2D image;
 
-//float brightness = dot(FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-/*if(brightness > 1.0)
-	BrightColor = vec4(FragColor.rgb, 1.0);
-else
-      	BrightColor = vec4(0.0, 0.0, 0.0, 1.0);*/
-
 void main()
 {
 	//we want to center the sample in the center of the pixel
 	vec2 uv = v_uv;
 
 	vec3 c = texture(image, uv).rgb;
-	float brightness = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));//max(c.r, max(c.g, c.b));
-	
-	if(brightness > 1.0)	
-	{
-		float knee = 1.0 * 0.5;
-		float soft = brightness - 1.0 + knee;
-		soft = clamp(soft, 0, 2 * knee);
-		soft = soft * soft / (4 * knee + 0.00001);
+	float brightness = max(c.r, max(c.g, c.b));
 
-		float contribution = max(0.0, brightness - 1.0);
-		contribution /= max(brightness, 0.00001);
-		BrightColor = vec4(c * contribution, 1.0);
-	}
-	else	
-		BrightColor = vec4(0.0, 0.0, 0.0, 1.0);
+	float knee = th * soft_th;
+	float soft = brightness - th + knee;
+	soft = clamp(soft, 0, 2 * knee);
+	soft = soft * soft / (4 * knee + 0.00001);
+
+	float contribution = max(soft, brightness - 1.0);
+	contribution /= max(brightness, 0.00001);
+	BrightColor = vec4(c * contribution, 1.0);
 }
 
 
@@ -2017,6 +2001,10 @@ void main()
 
     vec2 tex_offset = 1.0 / textureSize(image, 0); // gets size of single texel
     vec3 result = texture(image, TexCoords).rgb * weight[0]; // current fragment's contribution
+
+    if (result.x < 0.0 || result.y < 0.0 || result.z < 0.0)
+	discard;
+	
     if(horizontal)
     {
         for(int i = 1; i < 5; ++i)
@@ -2047,7 +2035,6 @@ void main()
 
 uniform sampler2D focusTexture;
 uniform sampler2D outOfFocusTexture;
-
 uniform sampler2D u_depth_texture;
 
 uniform mat4 u_inverse_viewprojection;
@@ -2059,31 +2046,76 @@ uniform vec3 u_focus_point;
 out vec4 fragColor;
 
 void main() {
-  float minDistance =  8.0;
-  float maxDistance = 12.0;
 
-  float far  = nearFar.y;
+  	float minDistance =  100;
+  	float maxDistance = 200;
 
-  vec2 uv = gl_FragCoord.xy * u_iRes;
+  	float far  = nearFar.y;
 
-  //reconstruct world position from depth and inv. viewproj
-  float depth = texture( u_depth_texture, uv ).x;	
+  	vec2 uv = gl_FragCoord.xy * u_iRes;
 
-  vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
-  vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
-  vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+  	//reconstruct world position from depth and inv. viewproj
+  	float depth = texture( u_depth_texture, uv ).x;	
 
-  vec4 focusColor = texture(focusTexture, uv);
-  vec4 outOfFocusColor = texture(outOfFocusTexture, uv);
+  	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+  	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+  	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
 
-  vec3 focusPoint      = u_focus_point;
+  	vec4 focusColor = texture(focusTexture, uv);
+  	vec4 outOfFocusColor = texture(outOfFocusTexture, uv);
 
-  float blur =
-    smoothstep
-      ( minDistance
-      , maxDistance
-      , length(worldpos - focusPoint)
-      );
+  	float blur = smoothstep(minDistance, maxDistance, length(worldpos - u_focus_point));
 
-  fragColor  = mix(focusColor, outOfFocusColor, blur);
+  	fragColor  = mix(focusColor, outOfFocusColor, blur);
+}
+
+\fxaa.fs
+
+uniform vec2 u_viewportSize;
+uniform vec2 u_iViewportSize;
+#define FXAA_REDUCE_MIN   (1.0/ 128.0)
+#define FXAA_REDUCE_MUL   (1.0 / 8.0)
+#define FXAA_SPAN_MAX     8.0
+
+/* from mitsuhiko/webgl-meincraft based on the code on geeks3d.com */
+/* fragCoord MUST BE IN PIXELS */
+vec4 applyFXAA(sampler2D tex, vec2 fragCoord)
+{
+	vec4 color = vec4(0.0);
+	/*vec2 u_iViewportSize = vec2(1.0 / u_viewportSize.x, 1.0 / u_viewportSize.y);*/
+	vec3 rgbNW = texture2D(tex, (fragCoord + vec2(-1.0, -1.0)) * u_iViewportSize).xyz;
+	vec3 rgbNE = texture2D(tex, (fragCoord + vec2(1.0, -1.0)) * u_iViewportSize).xyz;
+	vec3 rgbSW = texture2D(tex, (fragCoord + vec2(-1.0, 1.0)) * u_iViewportSize).xyz;
+	vec3 rgbSE = texture2D(tex, (fragCoord + vec2(1.0, 1.0)) * u_iViewportSize).xyz;
+	vec3 rgbM  = texture2D(tex, fragCoord  * u_iViewportSize).xyz;
+	vec3 luma = vec3(0.299, 0.587, 0.114);
+	float lumaNW = dot(rgbNW, luma);
+	float lumaNE = dot(rgbNE, luma);
+	float lumaSW = dot(rgbSW, luma);
+	float lumaSE = dot(rgbSE, luma);
+	float lumaM  = dot(rgbM,  luma);
+	float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+	float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+	
+	vec2 dir;
+	dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+	dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+	
+	float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
+	
+	float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+	dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX), max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX), dir * rcpDirMin)) * u_iViewportSize;
+	
+	vec3 rgbA = 0.5 * (texture2D(tex, fragCoord * u_iViewportSize + dir * (1.0 / 3.0 - 0.5)).xyz + 
+		texture2D(tex, fragCoord * u_iViewportSize + dir * (2.0 / 3.0 - 0.5)).xyz);\n\
+	vec3 rgbB = rgbA * 0.5 + 0.25 * (texture2D(tex, fragCoord * u_iViewportSize + dir * -0.5).xyz + 
+		texture2D(tex, fragCoord * u_iViewportSize + dir * 0.5).xyz);
+	
+	//return vec4(rgbA,1.0);
+	float lumaB = dot(rgbB, luma);
+	if ((lumaB < lumaMin) || (lumaB > lumaMax))
+		color = vec4(rgbA, 1.0);
+	else
+		color = vec4(rgbB, 1.0);
+	return color;
 }

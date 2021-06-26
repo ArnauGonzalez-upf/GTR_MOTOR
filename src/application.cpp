@@ -384,6 +384,11 @@ void Application::renderDebugGUI(void)
 			ImGui::SliderFloat("Air Density", &renderer->air_density, 0.001f, 0.005f);
 		}
 
+		ImGui::SliderFloat("Bloom Threshold", &renderer->bloom_th, 0.0f, 10.0f);
+		ImGui::SliderFloat("Bloom Soft Threshold", &renderer->bloom_soft_th, 0.0f, 1.0f);
+		ImGui::SliderInt("Bloom Blur Iterations", &renderer->blur_iterations, 0, 15);
+
+		ImGui::SliderFloat("Focal distance", &renderer->focal_dist, 0, 5000);
 	}
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
