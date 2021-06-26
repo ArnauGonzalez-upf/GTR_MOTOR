@@ -76,6 +76,7 @@ namespace GTR {
 		bool show_probes;
 		bool volumetric;
 		bool show_reflection_probes;
+		float air_density;
 
 		int depth_light;
 		int shadow_count; //counter for shadows.
@@ -99,6 +100,7 @@ namespace GTR {
 		FBO* irr_fbo;
 		FBO* decals_fbo;
 		FBO* bloom_fbo;
+		FBO* illumination_fbo_blurred;
 		SSAO* ssao;
 
 		bool reflections_calculated;

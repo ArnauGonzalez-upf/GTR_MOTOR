@@ -379,6 +379,10 @@ void Application::renderDebugGUI(void)
 		}
 
 		ImGui::Checkbox("Volumetric Directional Light", &renderer->volumetric);
+		if (renderer->volumetric)
+		{
+			ImGui::SliderFloat("Air Density", &renderer->air_density, 0.001f, 0.005f);
+		}
 
 	}
 
