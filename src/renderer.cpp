@@ -559,38 +559,6 @@ void Renderer::renderDeferred(std::vector<RenderCall> calls, Camera* camera, Sce
 		}
 	}
 
-/*	if (1)
-	{
-		glDisable(GL_DEPTH_TEST);
-		Mesh* quad = Mesh::getQuad();
-		Shader* shader = Shader::Get("bloom");
-		shader->enable();
-
-		shader->setTexture("image", illumination_fbo->color_textures[0], 0);
-
-		quad->render(GL_TRIANGLES);
-		shader->disable();
-	}
-
-	if (1)
-	{
-		Texture* ao = NULL;
-		if (activate_ssao)
-			ao = ssao->apply(gbuffers_fbo->color_textures[1], gbuffers_fbo->depth_texture, camera);
-
-		Mesh* quad = Mesh::getQuad();
-		Shader* shader = Shader::Get("blur");
-		shader->enable();
-
-		for (int i = 0; i < 10; ++i)
-		{
-			shader->setTexture("image", illumination_fbo->color_textures[1], 0);
-			shader->setUniform("horizontal", true);
-
-			quad->render(GL_TRIANGLES);
-		}
-	}*/
-
 	if (volumetric)
 	{
 		volumetricDirectional(camera);
