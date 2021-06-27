@@ -1813,11 +1813,17 @@ void main()
 
 	float air_density = u_air_density;
 	vec3 ray_dir = (worldpos - u_camera_position);
-	float dist = min(length(ray_dir), air_density / (air_density * 0.001));
+
+	float dist;
+	if (u_light_type == 2)
+		dist = min(length(ray_dir), air_density / (air_density * 0.001));
+	else
+		dist = length(ray_dir);		
+
 	ray_dir /= dist;
 	float step_dist = dist / float(SAMPLES);
 
-	vec3 startpos = u_camera_position;// + texture( u_noise_texture, uv ).xys;			
+	vec3 startpos = u_camera_position + texture( u_noise_texture, uv ).xyz * (ray_dir) * step_dist;			
 	vec3 current_pos;
 	vec3 ray_offset = (ray_dir) * step_dist;
 	float transparency = 1.0;
@@ -2094,8 +2100,8 @@ out vec4 fragColor;
 
 void main() {
 
-  	float minDistance =  100;
-  	float maxDistance = 200;
+  	float minDistance =  100000;
+  	float maxDistance = 2000000;
 
   	float far  = nearFar.y;
 

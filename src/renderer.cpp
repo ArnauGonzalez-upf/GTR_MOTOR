@@ -814,7 +814,7 @@ void Renderer::renderMeshWithMaterial(RenderCall& call, Camera* camera, Scene* s
 	if (!texture_em)
 		texture_em = Texture::getWhiteTexture(); //a 1x1 white texture
 	if (!texture_norm)
-		texture_norm = Texture::getWhiteTexture(); //a 1x1 white texture
+		texture_norm = Texture::getBlackTexture(); //a 1x1 white texture
 
 	shader->setUniform("u_texture", texture, 0);
 	shader->setUniform("u_texture_em", texture_em, 1);
