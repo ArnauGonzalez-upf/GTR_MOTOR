@@ -270,10 +270,24 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 
 	renderScene(scene, camera);
 
-	illumination_fbo->color_textures[0]->copyTo(illumination_fbo_blurred->color_textures[0]);
-
 	Mesh* quad = Mesh::getQuad();
-	Shader* shader = Shader::Get("blur");
+	//first FX
+	FBO* fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	Shader* shader = Shader::Get("fxaa");
+	shader->enable();
+	shader->setUniform("u_iViewportSize", Vector2(1.0 / (float)w, 1.0 / (float)h));
+	shader->setUniform("u_ViewportSize", Vector2((float)w, (float)h));
+	shader->setTexture("tex", illumination_fbo->color_textures[0], 0);
+
+	pong->toViewport(shader);
+	fbo->unbind();
+	shader->disable();
+
+	ping->copyTo(illumination_fbo_blurred->color_textures[0]);
+
+	quad = Mesh::getQuad();
+	shader = Shader::Get("blur");
 	shader->enable();
 	bool horizontal = true;
 
@@ -293,11 +307,11 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	applyBloom(camera);
 
 	//first FX
-	FBO* fbo = Texture::getGlobalFBO(ping);
+	fbo = Texture::getGlobalFBO(pong);
 	fbo->bind();
 	shader = Shader::Get("dof");
 	shader->enable();
-	shader->setTexture("focusTexture", illumination_fbo->color_textures[0], 0);
+	shader->setTexture("focusTexture", ping, 0);
 	shader->setTexture("outOfFocusTexture", illumination_fbo_blurred->color_textures[0], 1);
 	shader->setTexture("u_depth_texture", gbuffers_fbo->depth_texture, 2);
 
@@ -314,8 +328,43 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	Vector3 focal_point = camera->eye + focal_dist * front.normalize();
 	shader->setUniform("u_focus_point", focal_point);
 
+	ping->toViewport(shader);
+	fbo->unbind();
+
+	//first FX
+	fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	shader = Shader::Get("ca");
+	shader->enable();
+	shader->setUniform("resolution", Vector2((float)w, (float)h));
+	shader->setTexture("tInput", pong, 0);
+
 	pong->toViewport(shader);
 	fbo->unbind();
+	shader->disable();
+
+	//first FX
+	fbo = Texture::getGlobalFBO(pong);
+	fbo->bind();
+	shader = Shader::Get("lut");
+	shader->enable();
+	shader->setTexture("u_texture", pong, 0);
+	shader->setTexture("u_textureB", Texture::Get("data/textures/original.png"), 1);
+	shader->setUniform("u_amount", (float)0.0);
+	ping->toViewport(shader);
+	fbo->unbind();
+
+	//first FX
+	fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	shader = Shader::Get("grain");
+	shader->enable();
+	shader->setTexture("tDiffuse", pong, 0);
+	float time = abs(cos(getTime()));
+	shader->setUniform("amount", time);
+	pong->toViewport(shader);
+	fbo->unbind();
+
 
 	//and render the texture into the screen
 	Shader* hdr_shader = Shader::Get("hdr");

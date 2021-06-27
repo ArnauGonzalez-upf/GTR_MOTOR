@@ -26,6 +26,10 @@ decals basic.vs decals.fs
 bloom quad.vs bloom.fs
 blur quad.vs gaussian_blur.fs
 dof quad.vs dof.fs
+fxaa quad.vs fxaa.fs
+ca quad.vs chromatic_aberration.fs
+lut quad.vs lut.fs
+grain quad.vs grain.fs
 
 \sh_functions
 const float Pi = 3.141592654;
@@ -1814,23 +1818,19 @@ void main()
 	float air_density = u_air_density;
 	vec3 ray_dir = (worldpos - u_camera_position);
 
-	float dist;
-	if (u_light_type == 2)
-		dist = min(length(ray_dir), air_density / (air_density * 0.001));
-	else
-		dist = length(ray_dir);		
-
-	ray_dir /= dist;
-	float step_dist = dist / float(SAMPLES);
-
-	vec3 startpos = u_camera_position + texture( u_noise_texture, uv ).xyz * (ray_dir) * step_dist;			
-	vec3 current_pos;
-	vec3 ray_offset = (ray_dir) * step_dist;
 	float transparency = 1.0;
-	vec3 color = vec3(0.0);
+	vec3 light = vec3(0.0);//u_light_color;
 
 	if (u_light_type == 2) {//directional
-		current_pos = startpos;
+		
+		float dist = min(length(ray_dir), air_density / (air_density * 0.001));
+		ray_dir /= dist;
+		float step_dist = dist / float(SAMPLES);
+
+		vec3 startpos = u_camera_position + texture( u_noise_texture, uv ).xyz * (ray_dir) * step_dist;			
+		vec3 current_pos = startpos;
+		vec3 ray_offset = (ray_dir) * step_dist;
+
 		for(int i = 0; i < SAMPLES; ++i)
 		{
     			//evaluate contribution
@@ -1841,7 +1841,7 @@ void main()
 			vec4 v_lightspace_position = u_shadow_viewproj * vec4(current_pos, 1.0);
 
 			float shadow_factor = shadow_fact(v_lightspace_position);
-			color += shadow_factor * u_light_color * pixel_transparency;
+			light += shadow_factor * pixel_transparency;
 
 			if (transparency < 0.001)
 				break;
@@ -1852,8 +1852,17 @@ void main()
 	}
 	else if (u_light_type == 0){ //pointlight
 
+		ray_dir = normalize(ray_dir);
+		//define a step value for point lights
+		vec3 step_vec = 1.0 / (vec3(2.0) * abs(ray_dir));
+    		float step_dist = 0.1 * min(step_vec.x, min(step_vec.y, step_vec.z));
+		vec3 startpos = u_camera_position;
+
+		//light sphere properties	
 		vec3 center = u_light_position;
 		float radius = u_light_maxdist;
+
+		//check if intersection, t_hit.x = start, t_hit.y = end, we use t_hit.z for att_factor
 		vec3 t_hit = intersectSphere(startpos, ray_dir, center, radius);
 		//discard if the volume is behind the eye or ray doesn't intersect sphere
 		if (t_hit.x > t_hit.y || t_hit.x == t_hit.y)
@@ -1861,20 +1870,14 @@ void main()
 		t_hit.x = max(t_hit.x, 0.0);
 
 		//start from intersection point
-		current_pos = startpos + (t_hit.x + step_dist) * ray_dir;
+		vec3 current_pos = startpos + (t_hit.x + step_dist) * ray_dir;
+		vec3 ray_offset = (ray_dir) * step_dist;
 
-		//break if worldpos is in front
+		//discard if worldpos is in front
 		if (length(startpos-current_pos) > length(startpos-worldpos))
 			discard;
 
-		//compute a linear attenuation factor
-		float att_factor = u_light_maxdist - t_hit.z;
-		//normalize factor
-		att_factor /= u_light_maxdist;
-		//ignore negative values
-		att_factor = max( att_factor, 0.0 );
-
-		transparency -= 1.0 - att_factor;
+		float att_factor = 1.0;
 
 		for (float s = t_hit.x; s<t_hit.y; s+=step_dist)
 		{
@@ -1882,12 +1885,30 @@ void main()
 			if (length(startpos-current_pos) > length(startpos-worldpos))
 				break;
 
+			//Defining the light vector
+			vec3 L = center - current_pos;
+
+			//Compute distance and define the attenuation factor
+			float light_distance = length( L );
+
+			//compute a linear attenuation factor
+			float att = u_light_maxdist - light_distance;
+
+			//normalize factor
+			att /= u_light_maxdist;
+
+			//ignore negative values
+			att = max( att_factor, 0.0 );
+			
+			if (att < att_factor)
+				att_factor = att;
+
 			//evaluate contribution
 			float pixel_transparency = air_density * step_dist;
 
 			transparency -= pixel_transparency;
 
-			color += u_light_color * pixel_transparency;
+			light += pixel_transparency;
 
 			if (transparency < 0.001)
 				break;
@@ -1895,9 +1916,12 @@ void main()
 	    		//advance to next position
     			current_pos.xyz += ray_offset;
 		}
+		transparency -= att_factor;
+		transparency = max(transparency, 0.0);
 
 	}
-	
+	vec3 color = u_light_color;
+	color*=light;
 	FragColor = vec4(color, transparency);
 }
 
@@ -2100,8 +2124,8 @@ out vec4 fragColor;
 
 void main() {
 
-  	float minDistance =  100000;
-  	float maxDistance = 2000000;
+  	float minDistance =  100;
+  	float maxDistance = 500;
 
   	float far  = nearFar.y;
 
@@ -2124,16 +2148,24 @@ void main() {
 
 \fxaa.fs
 
+#version 330 core
+
 uniform vec2 u_viewportSize;
 uniform vec2 u_iViewportSize;
+uniform sampler2D tex;
+
 #define FXAA_REDUCE_MIN   (1.0/ 128.0)
 #define FXAA_REDUCE_MUL   (1.0 / 8.0)
 #define FXAA_SPAN_MAX     8.0
 
+out vec4 FragColor;
+
 /* from mitsuhiko/webgl-meincraft based on the code on geeks3d.com */
 /* fragCoord MUST BE IN PIXELS */
-vec4 applyFXAA(sampler2D tex, vec2 fragCoord)
+void main()
 {
+	vec2 fragCoord = gl_FragCoord.xy;
+	
 	vec4 color = vec4(0.0);
 	/*vec2 u_iViewportSize = vec2(1.0 / u_viewportSize.x, 1.0 / u_viewportSize.y);*/
 	vec3 rgbNW = texture2D(tex, (fragCoord + vec2(-1.0, -1.0)) * u_iViewportSize).xyz;
@@ -2160,7 +2192,7 @@ vec4 applyFXAA(sampler2D tex, vec2 fragCoord)
 	dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX), max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX), dir * rcpDirMin)) * u_iViewportSize;
 	
 	vec3 rgbA = 0.5 * (texture2D(tex, fragCoord * u_iViewportSize + dir * (1.0 / 3.0 - 0.5)).xyz + 
-		texture2D(tex, fragCoord * u_iViewportSize + dir * (2.0 / 3.0 - 0.5)).xyz);\n\
+		texture2D(tex, fragCoord * u_iViewportSize + dir * (2.0 / 3.0 - 0.5)).xyz);
 	vec3 rgbB = rgbA * 0.5 + 0.25 * (texture2D(tex, fragCoord * u_iViewportSize + dir * -0.5).xyz + 
 		texture2D(tex, fragCoord * u_iViewportSize + dir * 0.5).xyz);
 	
@@ -2170,5 +2202,129 @@ vec4 applyFXAA(sampler2D tex, vec2 fragCoord)
 		color = vec4(rgbA, 1.0);
 	else
 		color = vec4(rgbB, 1.0);
-	return color;
+	
+	FragColor = color;
+}
+
+\chromatic_aberration.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D tInput;
+uniform vec2 resolution;
+
+vec2 barrelDistortion(vec2 coord, float amt) {
+	vec2 cc = coord - 0.5;
+	float dist = dot(cc, cc);
+	return coord + cc * dist * amt;
+}
+
+float sat( float t )
+{
+	return clamp( t, 0.0, 1.0 );
+}
+
+float linterp( float t ) {
+	return sat( 1.0 - abs( 2.0*t - 1.0 ) );
+}
+
+float remap( float t, float a, float b ) {
+	return sat( (t - a) / (b - a) );
+}
+
+vec4 spectrum_offset( float t ) {
+	vec4 ret;
+	float lo = step(t,0.5);
+	float hi = 1.0-lo;
+	float w = linterp( remap( t, 1.0/6.0, 5.0/6.0 ) );
+	ret = vec4(lo,1.0,hi, 1.) * vec4(1.0-w, w, 1.0-w, 1.);
+
+	return pow( ret, vec4(1.0/2.2) );
+}
+
+const float max_distort = 1.0;
+const int num_iter = 12;
+const float reci_num_iter_f = 1.0 / float(num_iter);
+
+void main()
+{	
+	vec2 uv= v_uv; //(gl_FragCoord.xy/resolution.xy*.5)+.25;
+
+	vec4 sumcol = vec4(0.0);
+	vec4 sumw = vec4(0.0);	
+	for ( int i=0; i<num_iter;++i )
+	{
+		float t = float(i) * reci_num_iter_f;
+		vec4 w = spectrum_offset( t );
+		sumw += w;
+		sumcol += w * texture2D( tInput, barrelDistortion(uv, .3 * max_distort*t ) );
+	}
+		
+	gl_FragColor = sumcol / sumw;
+}
+
+\lut.fs
+
+#version 330 core
+
+precision highp float;
+precision highp float;
+
+in vec2 v_uv;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_textureB;
+uniform float u_amount;
+
+void main() {
+     vec2 v_coord = v_uv;
+
+     lowp vec4 color = clamp( texture2D(u_texture, v_coord), vec4(0.0), vec4(1.0) );
+     mediump float blueColor = color.b * 63.0;
+     mediump vec2 quad1;
+     quad1.y = floor(floor(blueColor) / 8.0);
+     quad1.x = floor(blueColor) - (quad1.y * 8.0);
+     mediump vec2 quad2;
+     quad2.y = floor(ceil(blueColor) / 8.0);
+     quad2.x = ceil(blueColor) - (quad2.y * 8.0);
+     highp vec2 texPos1;
+     texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.r);
+     texPos1.y = 1.0 - ((quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.g ));
+     highp vec2 texPos2;
+     texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.r);
+     texPos2.y = 1.0 - ((quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.g));
+     lowp vec4 newColor1 = texture2D(u_textureB, texPos1);
+     lowp vec4 newColor2 = texture2D(u_textureB, texPos2);
+     lowp vec4 newColor = mix(newColor1, newColor2, fract(blueColor));
+     gl_FragColor = vec4( mix( color.rgb, newColor.rgb, u_amount), color.w);
+}
+
+\grain.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform float amount;
+uniform sampler2D tDiffuse;
+
+float random( vec2 p )
+{
+	vec2 K1 = vec2(
+    		23.14069263277926, // e^pi (Gelfond's constant)
+    		2.665144142690225 // 2^sqrt(2) (Gelfond–Schneider constant)
+  		);
+	return fract( cos( dot(p,K1) ) * 12345.6789 );
+}
+
+void main() {
+	vec2 vUv = v_uv;
+
+  	vec4 color = texture( tDiffuse, vUv );
+  	vec2 uvRandom = vUv;
+ 	uvRandom.y *= random(vec2(uvRandom.y,amount));
+  	color.rgb += random(uvRandom)*0.05;
+  	gl_FragColor = vec4( color );
 }
