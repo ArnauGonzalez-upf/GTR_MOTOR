@@ -1743,6 +1743,7 @@ uniform int u_light_type;
 
 uniform float u_shadow_bias;
 uniform float u_air_density;
+uniform float u_light_maxdist;
 
 uniform bool u_pcf;
 
@@ -1782,24 +1783,22 @@ float dither4x4(vec2 position)
   return limit;
 }
 
-vec3 intersectSpheres(in vec3 origin, in vec3 direction)
+//returns ray sphere intersection 2 point intersection t = t0, t1 from a ray r(t)
+vec3 intersectSphere(vec3 origin, vec3 dir, vec3 center, float radius)
 {
-	//returns the range along the ray overlapped by the volume
-	//t in the range (t0,t1), r(t) = eye + t*dir
-	vec2 intersect_box(vec3 orig, vec3 dir) {
-    	const vec3 box_min = vec3(-1);
-    	const vec3 box_max = vec3(1);
-    	vec3 inv_dir = 1.0 / dir;
-    	vec3 tmin_tmp = (box_min - orig) * inv_dir;
-    	vec3 tmax_tmp = (box_max - orig) * inv_dir;
-    	vec3 tmin = min(tmin_tmp, tmax_tmp);
-    	vec3 tmax = max(tmin_tmp, tmax_tmp);
-   	float t0 = max(tmin.x, max(tmin.y, tmin.z));
-    	float t1 = min(tmax.x, min(tmax.y, tmax.z));
-    	return vec2(t0, t1);
-}
-}
+	float t = dot(center - origin, dir);
+	vec3 p = origin + dir*t;
+	float y = length(center - p);
 
+	if (y < radius)
+	{
+		float x = sqrt(radius*radius - y*y);
+		float t1 = t-x;
+		float t2 = t+x;
+		return vec3(t1,t2,y);
+	}
+	return vec3(-1.0);
+}
 void main()
 {
 	//extract uvs from pixel screenpos
@@ -1819,30 +1818,78 @@ void main()
 	float step_dist = dist / float(SAMPLES);
 
 	vec3 startpos = u_camera_position;// + texture( u_noise_texture, uv ).xys;			
-	
-	vec3 current_pos = startpos;
+	vec3 current_pos;
 	vec3 ray_offset = (ray_dir) * step_dist;
-
 	float transparency = 1.0;
-
 	vec3 color = vec3(0.0);
-	for(int i = 0; i < SAMPLES; ++i)
-	{
-    		//evaluate contribution
-		float pixel_transparency = air_density * step_dist;
 
-		transparency -= pixel_transparency;
+	if (u_light_type == 2) {//directional
+		current_pos = startpos;
+		for(int i = 0; i < SAMPLES; ++i)
+		{
+    			//evaluate contribution
+			float pixel_transparency = air_density * step_dist;
 
-		vec4 v_lightspace_position = u_shadow_viewproj * vec4(current_pos, 1.0);
+			transparency -= pixel_transparency;
 
-		float shadow_factor = shadow_fact(v_lightspace_position);
-		color += shadow_factor * u_light_color * pixel_transparency;
+			vec4 v_lightspace_position = u_shadow_viewproj * vec4(current_pos, 1.0);
 
-		if (transparency < 0.001)
-			break;
+			float shadow_factor = shadow_fact(v_lightspace_position);
+			color += shadow_factor * u_light_color * pixel_transparency;
 
-    		//advance to next position
-    		current_pos.xyz += ray_offset;
+			if (transparency < 0.001)
+				break;
+
+	    		//advance to next position
+    			current_pos.xyz += ray_offset;
+		}
+	}
+	else if (u_light_type == 0){ //pointlight
+
+		vec3 center = u_light_position;
+		float radius = u_light_maxdist;
+		vec3 t_hit = intersectSphere(startpos, ray_dir, center, radius);
+		//discard if the volume is behind the eye or ray doesn't intersect sphere
+		if (t_hit.x > t_hit.y || t_hit.x == t_hit.y)
+			discard;
+		t_hit.x = max(t_hit.x, 0.0);
+
+		//start from intersection point
+		current_pos = startpos + (t_hit.x + step_dist) * ray_dir;
+
+		//break if worldpos is in front
+		if (length(startpos-current_pos) > length(startpos-worldpos))
+			discard;
+
+		//compute a linear attenuation factor
+		float att_factor = u_light_maxdist - t_hit.z;
+		//normalize factor
+		att_factor /= u_light_maxdist;
+		//ignore negative values
+		att_factor = max( att_factor, 0.0 );
+
+		transparency -= 1.0 - att_factor;
+
+		for (float s = t_hit.x; s<t_hit.y; s+=step_dist)
+		{
+			//break if worldpos is in front
+			if (length(startpos-current_pos) > length(startpos-worldpos))
+				break;
+
+			//evaluate contribution
+			float pixel_transparency = air_density * step_dist;
+
+			transparency -= pixel_transparency;
+
+			color += u_light_color * pixel_transparency;
+
+			if (transparency < 0.001)
+				break;
+
+	    		//advance to next position
+    			current_pos.xyz += ray_offset;
+		}
+
 	}
 	
 	FragColor = vec4(color, transparency);

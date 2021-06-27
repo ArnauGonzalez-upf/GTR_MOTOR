@@ -656,6 +656,7 @@ void Renderer::volumetricDirectional(Camera* camera)
 	shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 0);
 	shader->setTexture("u_noise_texture", Texture::Get("data/textures/noise.png"), 1);
 
+
 	directional_light->uploadLightParams(shader, true, hdr_gamma);
 
 	glEnable(GL_BLEND);
@@ -663,6 +664,18 @@ void Renderer::volumetricDirectional(Camera* camera)
 	glDisable(GL_DEPTH_TEST);
 
 	quad->render(GL_TRIANGLES);
+
+	//glEnable(GL_DEPTH_TEST);
+
+	for (int i = 0; i < lights.size(); ++i)
+	{
+		LightEntity* l = lights[i];
+		if (l->light_type == DIRECTIONAL || l->light_type == SPOT)
+			continue;
+		l->uploadLightParams(shader, true, hdr_gamma);
+		quad->render(GL_TRIANGLES);
+	}
+
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
