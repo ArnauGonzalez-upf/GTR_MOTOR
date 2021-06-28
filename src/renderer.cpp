@@ -33,6 +33,14 @@ Renderer::Renderer()
 	bloom_soft_th = 0.5f;
 	blur_iterations = 5;
 
+	focal_dist = 0;
+	min_dist_dof = 100;
+	max_dist_dof = 500;
+
+	noise_amount = 0.5f;
+
+	lens_dist = 1.0f;
+
 	show_omr = false;
 	pcf = false;
 	depth_viewport = false;
@@ -328,6 +336,9 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	Vector3 focal_point = camera->eye + focal_dist * front.normalize();
 	shader->setUniform("u_focus_point", focal_point);
 
+	shader->setUniform("minDistance", min_dist_dof);
+	shader->setUniform("maxDistance", max_dist_dof);
+
 	ping->toViewport(shader);
 	fbo->unbind();
 
@@ -338,7 +349,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	shader->enable();
 	shader->setUniform("resolution", Vector2((float)w, (float)h));
 	shader->setTexture("tInput", pong, 0);
-
+	shader->setUniform("u_lens_dist", lens_dist);
 	pong->toViewport(shader);
 	fbo->unbind();
 	shader->disable();
@@ -362,6 +373,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	shader->setTexture("tDiffuse", pong, 0);
 	float time = abs(cos(getTime()));
 	shader->setUniform("amount", time);
+	shader->setUniform("noise_amount", noise_amount);
 	pong->toViewport(shader);
 	fbo->unbind();
 

@@ -112,6 +112,12 @@ namespace GTR {
 		Texture* pong;
 
 		float focal_dist;
+		float min_dist_dof;
+		float max_dist_dof;
+
+		float noise_amount;
+
+		float lens_dist;
 
 		Renderer();
 

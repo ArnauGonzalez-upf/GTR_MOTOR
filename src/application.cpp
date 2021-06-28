@@ -388,7 +388,13 @@ void Application::renderDebugGUI(void)
 		ImGui::SliderFloat("Bloom Soft Threshold", &renderer->bloom_soft_th, 0.0f, 1.0f);
 		ImGui::SliderInt("Bloom Blur Iterations", &renderer->blur_iterations, 0, 15);
 
+		ImGui::SliderFloat("Minimum DOF distance", &renderer->min_dist_dof, 0, 1000);
+		ImGui::SliderFloat("Maximum DOF distance", &renderer->max_dist_dof, renderer->min_dist_dof, 1000);
 		ImGui::SliderFloat("Focal distance", &renderer->focal_dist, 0, 5000);
+
+		ImGui::SliderFloat("Grain", &renderer->noise_amount, 0.0f, 1.0f);
+
+		ImGui::SliderFloat("Lens Distortion", &renderer->lens_dist, 0.0f, 5.0f);
 	}
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);

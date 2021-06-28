@@ -2120,13 +2120,12 @@ uniform vec2 u_iRes;
 uniform vec2 nearFar;
 uniform vec3 u_focus_point;
 
+uniform float minDistance;
+uniform float maxDistance;
+
 out vec4 fragColor;
 
 void main() {
-
-  	float minDistance =  100;
-  	float maxDistance = 500;
-
   	float far  = nearFar.y;
 
   	vec2 uv = gl_FragCoord.xy * u_iRes;
@@ -2215,6 +2214,8 @@ in vec2 v_uv;
 uniform sampler2D tInput;
 uniform vec2 resolution;
 
+uniform float u_lens_dist;
+
 vec2 barrelDistortion(vec2 coord, float amt) {
 	vec2 cc = coord - 0.5;
 	float dist = dot(cc, cc);
@@ -2244,7 +2245,6 @@ vec4 spectrum_offset( float t ) {
 	return pow( ret, vec4(1.0/2.2) );
 }
 
-const float max_distort = 1.0;
 const int num_iter = 12;
 const float reci_num_iter_f = 1.0 / float(num_iter);
 
@@ -2259,7 +2259,7 @@ void main()
 		float t = float(i) * reci_num_iter_f;
 		vec4 w = spectrum_offset( t );
 		sumw += w;
-		sumcol += w * texture2D( tInput, barrelDistortion(uv, .3 * max_distort*t ) );
+		sumcol += w * texture2D( tInput, barrelDistortion(uv, .3 * u_lens_dist*t ) );
 	}
 		
 	gl_FragColor = sumcol / sumw;
@@ -2309,6 +2309,7 @@ in vec2 v_uv;
 
 uniform float amount;
 uniform sampler2D tDiffuse;
+uniform float noise_amount;
 
 float random( vec2 p )
 {
@@ -2325,6 +2326,6 @@ void main() {
   	vec4 color = texture( tDiffuse, vUv );
   	vec2 uvRandom = vUv;
  	uvRandom.y *= random(vec2(uvRandom.y,amount));
-  	color.rgb += random(uvRandom)*0.05;
+  	color.rgb += random(uvRandom)*0.05 * noise_amount;
   	gl_FragColor = vec4( color );
 }
