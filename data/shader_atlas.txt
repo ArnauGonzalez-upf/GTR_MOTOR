@@ -30,6 +30,7 @@ fxaa quad.vs fxaa.fs
 ca quad.vs chromatic_aberration.fs
 lut quad.vs lut.fs
 grain quad.vs grain.fs
+motionblur quad.vs motion_blur.fs
 
 \sh_functions
 const float Pi = 3.141592654;
@@ -2001,7 +2002,7 @@ void main()
 
 	vec4 color = texture2D( u_texture, v_uv );
 	vec3 bloomColor = texture(u_texture_bloom, v_uv).rgb;
-	vec3 rgb = color.xyz + bloomColor;
+	vec3 rgb = color.xyz;// + bloomColor;
 	
 	if (u_hdr)
 	{
@@ -2126,8 +2127,6 @@ uniform float maxDistance;
 out vec4 fragColor;
 
 void main() {
-  	float far  = nearFar.y;
-
   	vec2 uv = gl_FragCoord.xy * u_iRes;
 
   	//reconstruct world position from depth and inv. viewproj
@@ -2328,4 +2327,47 @@ void main() {
  	uvRandom.y *= random(vec2(uvRandom.y,amount));
   	color.rgb += random(uvRandom)*0.05 * noise_amount;
   	gl_FragColor = vec4( color );
+}
+
+\motion_blur.fs
+
+#version 330 core
+
+in vec2 v_uv;
+
+uniform sampler2D u_texture;
+uniform sampler2D u_depth_texture;
+
+uniform mat4 u_inverse_viewprojection;
+uniform mat4 u_prev_vp;
+
+//pass here all the uniforms required for illumination...
+layout(location = 0) out vec4 FragColor;
+
+void main()
+{
+    	vec2 uv = v_uv;
+  
+   	//reconstruct world position from depth and inv. viewproj
+    	float depth = texture( u_depth_texture, uv ).x;
+	
+    	vec4 screen_pos = vec4(uv.x*2.0-1.0, uv.y*2.0-1.0, depth*2.0-1.0, 1.0);
+    	vec4 proj_worldpos = u_inverse_viewprojection * screen_pos;
+    	vec3 worldpos = proj_worldpos.xyz / proj_worldpos.w;
+	
+	vec4 old_screenpos = u_prev_vp * vec4(worldpos,1.0);
+    	old_screenpos.xyz /= old_screenpos.w;
+    	vec2 uv_old = old_screenpos.xy * 0.5 + vec2(0.5);
+
+	vec3 color = vec3(0.0);
+	for (int i = 0; i < 16; ++i)
+	{
+		float f = float(i) / 16.0;
+		vec2 uv_temp = mix(uv,uv_old,f);
+		color += texture(u_texture,uv_temp).xyz;
+	}
+
+	color /= 16.0;
+
+	FragColor = vec4(max(color,vec3(0.0)), 1.0);
 }

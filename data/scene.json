@@ -17,6 +17,11 @@
 			"position": [ -28, 56, 65 ]
 		},
 		{
+			"name": "reflection_probe3",
+			"type": "REFLECTION_PROBE",
+			"position": [ -28, 56, 65 ]
+		},
+		{
 			"name": "floor",
 			"type": "PREFAB",
 			"filename": "prefabs/floor.glb",

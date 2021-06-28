@@ -111,6 +111,8 @@ namespace GTR {
 		Texture* ping;
 		Texture* pong;
 
+		Matrix44 prev_vp;
+
 		float focal_dist;
 		float min_dist_dof;
 		float max_dist_dof;

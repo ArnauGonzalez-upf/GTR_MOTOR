@@ -33,9 +33,9 @@ Renderer::Renderer()
 	bloom_soft_th = 0.5f;
 	blur_iterations = 5;
 
-	focal_dist = 0;
-	min_dist_dof = 100;
-	max_dist_dof = 500;
+	focal_dist = 500.0f;
+	min_dist_dof = 100.0f;
+	max_dist_dof = 500.0f;
 
 	noise_amount = 0.5f;
 
@@ -52,10 +52,18 @@ Renderer::Renderer()
 	activate_irr = false;
 	irr_3lerp = false;
 
+	reflections = false;
+	volumetric = false;
+
+	show_reflection_probes = false;
+	show_probes = false;
 	reflections_calculated = false;
 
 	gbuffers_fbo = new FBO();
+	decals_fbo = new FBO();
+
 	atlas = NULL;
+
 	ssao = new SSAO(64, true);
 
 	illumination_fbo = new FBO();
@@ -64,26 +72,23 @@ Renderer::Renderer()
 			GL_RGBA,       //four channels
 			GL_FLOAT,//half float
 			true);        //add depth_texture)
+	illumination_fbo_blurred = new FBO();
+	illumination_fbo_blurred->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGBA,       //four channels
+		GL_FLOAT,//half float
+		false);        //add depth_texture)
 
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
-
 	probes_texture = NULL;
 
 	reflections_fbo = new FBO();
 	reflections_fbo->create(Application::instance->window_width, Application::instance->window_height,
 		1,            //one textures
 		GL_RGB,       //four channels
-		GL_FLOAT,//half float
+		GL_UNSIGNED_BYTE,//half float
 		false);
-
-	reflections = false;
-	volumetric = false;
-
-	show_reflection_probes = false;
-	show_probes = false;
-
-	decals_fbo = new FBO();
 
 	bloom_fbo = new FBO();
 	bloom_fbo->create(Application::instance->window_width, Application::instance->window_height,
@@ -91,13 +96,6 @@ Renderer::Renderer()
 		GL_RGBA,       //four channels
 		GL_FLOAT,//half float
 		false);
-
-	illumination_fbo_blurred = new FBO();
-	illumination_fbo_blurred->create(Application::instance->window_width, Application::instance->window_height,
-		1,            //one textures
-		GL_RGBA,       //four channels
-		GL_FLOAT,//half float
-		false);        //add depth_texture)
 
 	ping = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
 	pong = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
@@ -192,16 +190,14 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 		Texture* extra = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
 		Texture* irradiance = new Texture(w, h, GL_RGB, GL_HALF_FLOAT);
 		Texture* depth = new Texture(w, h, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, false);
-
 		std::vector<Texture*> text = { albedo,normals,extra,irradiance };
-
 		gbuffers_fbo->setTextures(text, depth);
 
-		decals_fbo->create(Application::instance->window_width,
-			Application::instance->window_height,
-			3,
-			GL_RGBA,
-			GL_UNSIGNED_BYTE);
+		Texture* albedo_decals = new Texture(w, h, GL_RGBA, GL_FLOAT);
+		Texture* normals_decals = new Texture(w, h, GL_RGBA, GL_UNSIGNED_BYTE);
+		Texture* extra_decals = new Texture(w, h, GL_RGBA, GL_HALF_FLOAT);
+		std::vector<Texture*> text_decals = { albedo_decals,normals_decals,extra_decals };
+		decals_fbo->setTextures(text_decals);
 	}
 
 	//start rendering inside the gbuffers
@@ -254,7 +250,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
 
-	/*gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
+	gbuffers_fbo->color_textures[0]->copyTo(decals_fbo->color_textures[0]);
 	gbuffers_fbo->color_textures[1]->copyTo(decals_fbo->color_textures[1]);
 	gbuffers_fbo->color_textures[2]->copyTo(decals_fbo->color_textures[2]);
 
@@ -265,7 +261,7 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 
 	decals_fbo->color_textures[0]->copyTo(gbuffers_fbo->color_textures[0]);
 	decals_fbo->color_textures[1]->copyTo(gbuffers_fbo->color_textures[1]);
-	decals_fbo->color_textures[2]->copyTo(gbuffers_fbo->color_textures[2]);*/
+	decals_fbo->color_textures[2]->copyTo(gbuffers_fbo->color_textures[2]);
 
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_BLEND);
@@ -279,7 +275,8 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	renderScene(scene, camera);
 
 	Mesh* quad = Mesh::getQuad();
-	//first FX
+
+	//first FX (FXAA)
 	FBO* fbo = Texture::getGlobalFBO(ping);
 	fbo->bind();
 	Shader* shader = Shader::Get("fxaa");
@@ -287,96 +284,105 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	shader->setUniform("u_iViewportSize", Vector2(1.0 / (float)w, 1.0 / (float)h));
 	shader->setUniform("u_ViewportSize", Vector2((float)w, (float)h));
 	shader->setTexture("tex", illumination_fbo->color_textures[0], 0);
-
 	pong->toViewport(shader);
 	fbo->unbind();
 	shader->disable();
 
+	//Blurring
 	ping->copyTo(illumination_fbo_blurred->color_textures[0]);
 
-	quad = Mesh::getQuad();
 	shader = Shader::Get("blur");
 	shader->enable();
 	bool horizontal = true;
-
 	for (int i = 0; i < blur_iterations; ++i)
 	{
 		illumination_fbo_blurred->bind();
-		shader->setTexture("image", illumination_fbo_blurred->color_textures[0], 15);
+		shader->setTexture("image", illumination_fbo_blurred->color_textures[0], 0);
 		shader->setUniform("horizontal", horizontal);
 
 		quad->render(GL_TRIANGLES);
 		illumination_fbo_blurred->unbind();
 		horizontal = !horizontal;
 	}
-
 	shader->disable();
 
-	applyBloom(camera);
-
-	//first FX
+	//Second FX (DoF)
 	fbo = Texture::getGlobalFBO(pong);
 	fbo->bind();
 	shader = Shader::Get("dof");
 	shader->enable();
 	shader->setTexture("focusTexture", ping, 0);
 	shader->setTexture("outOfFocusTexture", illumination_fbo_blurred->color_textures[0], 1);
-	shader->setTexture("u_depth_texture", gbuffers_fbo->depth_texture, 2);
-
+	shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 2);
 	//pass the inverse projection of the camera to reconstruct world pos.
 	Matrix44 inv_vp = camera->viewprojection_matrix;
 	inv_vp.inverse();
 	shader->setUniform("u_inverse_viewprojection", inv_vp);
 	//pass the inverse window resolution, this may be useful
 	shader->setUniform("u_iRes", Vector2(1.0 / (float)w, 1.0 / (float)h));
-
-	shader->setUniform("nearFar", Vector2(camera->near_plane, camera->far_plane));
-
 	Vector3 front = camera->center - camera->eye;
 	Vector3 focal_point = camera->eye + focal_dist * front.normalize();
 	shader->setUniform("u_focus_point", focal_point);
-
 	shader->setUniform("minDistance", min_dist_dof);
 	shader->setUniform("maxDistance", max_dist_dof);
-
 	ping->toViewport(shader);
 	fbo->unbind();
 
-	//first FX
+	//Third FX (Motion Blur)
 	fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	shader = Shader::Get("motionblur");
+	shader->enable();
+	shader->setUniform("u_prev_vp", prev_vp);
+	shader->setUniform("u_inverse_viewprojection", inv_vp);
+	shader->setTexture("u_texture", pong, 0);
+	shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 1);
+	pong->toViewport(shader);
+	fbo->unbind();
+	
+	//Fourth FX (Bloom)
+	applyBloom(camera);
+	fbo = Texture::getGlobalFBO(ping);
+	fbo->bind();
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
+	bloom_fbo->color_textures[0]->toViewport();
+	fbo->unbind();
+
+	//Fifth FX (Chromatic aberration)
+	fbo = Texture::getGlobalFBO(pong);
 	fbo->bind();
 	shader = Shader::Get("ca");
 	shader->enable();
 	shader->setUniform("resolution", Vector2((float)w, (float)h));
-	shader->setTexture("tInput", pong, 0);
+	shader->setTexture("tInput", ping, 0);
 	shader->setUniform("u_lens_dist", lens_dist);
-	pong->toViewport(shader);
+	ping->toViewport(shader);
 	fbo->unbind();
 	shader->disable();
 
-	//first FX
-	fbo = Texture::getGlobalFBO(pong);
+	//Sixth FX (LUTs)
+	fbo = Texture::getGlobalFBO(ping);
 	fbo->bind();
 	shader = Shader::Get("lut");
 	shader->enable();
-	shader->setTexture("u_texture", pong, 0);
+	shader->setTexture("u_texture", ping, 0);
 	shader->setTexture("u_textureB", Texture::Get("data/textures/original.png"), 1);
 	shader->setUniform("u_amount", (float)0.0);
-	ping->toViewport(shader);
-	fbo->unbind();
-
-	//first FX
-	fbo = Texture::getGlobalFBO(ping);
-	fbo->bind();
-	shader = Shader::Get("grain");
-	shader->enable();
-	shader->setTexture("tDiffuse", pong, 0);
-	float time = abs(cos(getTime()));
-	shader->setUniform("amount", time);
-	shader->setUniform("noise_amount", noise_amount);
 	pong->toViewport(shader);
 	fbo->unbind();
 
+	//Seventh FX (Grain)
+	fbo = Texture::getGlobalFBO(pong);
+	fbo->bind();
+	shader = Shader::Get("grain");
+	shader->enable();
+	shader->setTexture("tDiffuse", ping, 0);
+	float time = abs(cos(getTime()));
+	shader->setUniform("amount", time);
+	shader->setUniform("noise_amount", noise_amount);
+	ping->toViewport(shader);
+	fbo->unbind();
 
 	//and render the texture into the screen
 	Shader* hdr_shader = Shader::Get("hdr");
@@ -397,7 +403,9 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 
 	glDisable(GL_BLEND);
 
-	ping->toViewport(hdr_shader);
+	pong->toViewport(hdr_shader);
+
+	prev_vp = camera->viewprojection_matrix;
 
 	if (render_mode == DEFERRED && show_gbuffers)
 		showGbuffers(gbuffers_fbo, camera);
@@ -717,7 +725,6 @@ void Renderer::volumetricDirectional(Camera* camera)
 	shader->setTexture("u_depth_texture", illumination_fbo->depth_texture, 0);
 	shader->setTexture("u_noise_texture", Texture::Get("data/textures/noise.png"), 1);
 
-
 	directional_light->uploadLightParams(shader, true, hdr_gamma);
 
 	glEnable(GL_BLEND);
@@ -736,7 +743,6 @@ void Renderer::volumetricDirectional(Camera* camera)
 		l->uploadLightParams(shader, true, hdr_gamma);
 		quad->render(GL_TRIANGLES);
 	}
-
 }
 
 void Renderer::renderMeshWithMaterialShadow(const Matrix44& model, Mesh* mesh, GTR::Material* material, LightEntity* light)
@@ -1365,13 +1371,13 @@ void Renderer::showGbuffers(FBO* gbuffers_fbo, Camera* camera)
 		hdr_shader->setUniform("u_hdr", false);
 
 		glViewport(0, 0, width * 0.5, height * 0.5);
-		illumination_fbo->color_textures[0]->toViewport(hdr_shader);
+		bloom_fbo->color_textures[0]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, height * 0.5, width * 0.5, height * 0.5);
-		gbuffers_fbo->color_textures[2]->toViewport(hdr_shader);
+		gbuffers_fbo->color_textures[1]->toViewport(hdr_shader);
 
 		glViewport(width * 0.5, 0, width * 0.5, height * 0.5);
-		bloom_fbo->color_textures[0]->toViewport();
+		gbuffers_fbo->color_textures[2]->toViewport();
 
 		glViewport(0, height * 0.5, width * 0.5, height * 0.5);
 		Shader* depth_shader = Shader::Get("depth");
