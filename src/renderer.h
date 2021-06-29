@@ -116,6 +116,7 @@ namespace GTR {
 		float focal_dist;
 		float min_dist_dof;
 		float max_dist_dof;
+		float LUT_amount;
 
 		float noise_amount;
 

@@ -41,6 +41,8 @@ Renderer::Renderer()
 
 	lens_dist = 1.0f;
 
+	LUT_amount = 0.0f;
+
 	show_omr = false;
 	pcf = false;
 	depth_viewport = false;
@@ -367,9 +369,9 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	fbo->bind();
 	shader = Shader::Get("lut");
 	shader->enable();
-	shader->setTexture("u_texture", ping, 0);
-	shader->setTexture("u_textureB", Texture::Get("data/textures/original.png"), 1);
-	shader->setUniform("u_amount", (float)0.0);
+	shader->setTexture("u_textureB", pong, 0);
+	shader->setTexture("u_texture", Texture::Get("data/textures/darkLUT.png"), 1);
+	shader->setUniform("u_amount", (float)LUT_amount);
 	pong->toViewport(shader);
 	fbo->unbind();
 
