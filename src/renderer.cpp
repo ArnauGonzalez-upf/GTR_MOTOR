@@ -348,6 +348,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	glBlendFunc(GL_ONE, GL_ONE);
 	bloom_fbo->color_textures[0]->toViewport();
 	fbo->unbind();
+	glDisable(GL_BLEND);
 
 	//Fifth FX (Chromatic aberration)
 	fbo = Texture::getGlobalFBO(pong);
