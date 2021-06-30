@@ -31,7 +31,7 @@ Renderer::Renderer()
 	air_density = 0.002f;
 	bloom_th = 1.0f;
 	bloom_soft_th = 0.5f;
-	blur_iterations = 5;
+	blur_iterations = 10;
 
 	focal_dist = 500.0f;
 	min_dist_dof = 100.0f;
@@ -39,9 +39,7 @@ Renderer::Renderer()
 
 	noise_amount = 0.5f;
 
-	lens_dist = 1.0f;
-
-	LUT_amount = 0.0f;
+	lens_dist = 0.5f;
 
 	show_omr = false;
 	pcf = false;
@@ -68,37 +66,47 @@ Renderer::Renderer()
 
 	ssao = new SSAO(64, true);
 
+	int w = Application::instance->window_width;
+	int h = Application::instance->window_height;
+
+	//FBO final
 	illumination_fbo = new FBO();
-	illumination_fbo->create(Application::instance->window_width, Application::instance->window_height,
+	illumination_fbo->create(w,h,
 			1,            //one textures
 			GL_RGBA,       //four channels
 			GL_FLOAT,//half float
 			true);        //add depth_texture)
+
+	//Version blurreada del FBO final para bloom y dof
 	illumination_fbo_blurred = new FBO();
-	illumination_fbo_blurred->create(Application::instance->window_width, Application::instance->window_height,
+	illumination_fbo_blurred->create(w, h,
 		1,            //one textures
 		GL_RGBA,       //four channels
 		GL_FLOAT,//half float
 		false);        //add depth_texture)
 
+	//FBO para irradiance
 	irr_fbo = new FBO();
 	irr_fbo->create(64, 64, 1, GL_RGB, GL_FLOAT, false);
 	probes_texture = NULL;
 
+	//FBO para clacular las reflexiones
 	reflections_fbo = new FBO();
-	reflections_fbo->create(Application::instance->window_width, Application::instance->window_height,
+	reflections_fbo->create(w, h,
 		1,            //one textures
 		GL_RGB,       //four channels
 		GL_UNSIGNED_BYTE,//half float
 		false);
 
+	//FBO donde pintaremos el bloom final
 	bloom_fbo = new FBO();
-	bloom_fbo->create(Application::instance->window_width, Application::instance->window_height,
+	bloom_fbo->create(w, h,
 		1,            //one textures
 		GL_RGBA,       //four channels
 		GL_FLOAT,//half float
 		false);
 
+	//Texturas para post FX
 	ping = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
 	pong = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
 }
@@ -146,7 +154,6 @@ void Renderer::getCallsFromNode(const Matrix44& prefab_model, GTR::Node* node, C
 			}
 
 		}
-
 		calls.push_back(call);
 	}
 
@@ -246,8 +253,6 @@ void Renderer::renderGBuffers(std::vector<RenderCall> calls, Camera* camera, Sce
 		if (camera->testBoxInFrustum(world_bounding.center, world_bounding.halfsize))
 			renderMeshWithMaterial(calls[i], camera, scene, render_mode);
 	}
-
-	renderDecals(scene, camera);
 
 	//stop rendering to the gbuffers
 	gbuffers_fbo->unbind();
@@ -364,27 +369,16 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 	fbo->unbind();
 	shader->disable();
 
-	//Sixth FX (LUTs)
+	//Sixth FX (Grain)
 	fbo = Texture::getGlobalFBO(ping);
-	fbo->bind();
-	shader = Shader::Get("lut");
-	shader->enable();
-	shader->setTexture("u_textureB", pong, 0);
-	shader->setTexture("u_texture", Texture::Get("data/textures/darkLUT.png"), 1);
-	shader->setUniform("u_amount", (float)LUT_amount);
-	pong->toViewport(shader);
-	fbo->unbind();
-
-	//Seventh FX (Grain)
-	fbo = Texture::getGlobalFBO(pong);
 	fbo->bind();
 	shader = Shader::Get("grain");
 	shader->enable();
-	shader->setTexture("tDiffuse", ping, 0);
+	shader->setTexture("tDiffuse", pong, 0);
 	float time = abs(cos(getTime()));
 	shader->setUniform("amount", time);
 	shader->setUniform("noise_amount", noise_amount);
-	ping->toViewport(shader);
+	pong->toViewport(shader);
 	fbo->unbind();
 
 	//and render the texture into the screen
@@ -406,7 +400,7 @@ void GTR::Renderer::renderToFBO(Scene* scene, Camera* camera)
 
 	glDisable(GL_BLEND);
 
-	pong->toViewport(hdr_shader);
+	ping->toViewport(hdr_shader);
 
 	prev_vp = camera->viewprojection_matrix;
 

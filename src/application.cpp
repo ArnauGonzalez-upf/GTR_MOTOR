@@ -304,6 +304,16 @@ void Application::renderDebugGUI(void)
 	bool changed_light_eq = false;
 	changed_light_eq |= ImGui::Combo("Light Equation", (int*)&renderer->light_eq, "PHONG\0DIRECT_LAMB\0DIRECT_BURLEY", 3);
 
+
+	ImGui::SliderFloat("Bloom Threshold", &renderer->bloom_th, 0.0f, 10.0f);
+	ImGui::SliderFloat("Bloom Soft Threshold", &renderer->bloom_soft_th, 0.0f, 1.0f);
+	ImGui::SliderInt("Bloom Blur Iterations", &renderer->blur_iterations, 0, 15);
+	ImGui::SliderFloat("Minimum DOF distance", &renderer->min_dist_dof, 0, renderer->max_dist_dof);
+	ImGui::SliderFloat("Maximum DOF distance", &renderer->max_dist_dof, renderer->min_dist_dof, 1000);
+	ImGui::SliderFloat("Focal distance", &renderer->focal_dist, 0, 5000);
+	ImGui::SliderFloat("Grain", &renderer->noise_amount, 0.0f, 1.0f);
+	ImGui::SliderFloat("Lens Distortion", &renderer->lens_dist, 0.0f, 1.0f);
+
 	//Enabling depth viewport
 	ImGui::Checkbox("Depth Viewport", &renderer->depth_viewport);
 	if (renderer->depth_viewport) //We have to convert it to char
@@ -383,17 +393,6 @@ void Application::renderDebugGUI(void)
 		{
 			ImGui::SliderFloat("Air Density", &renderer->air_density, 0.001f, 0.005f);
 		}
-
-		ImGui::SliderFloat("Bloom Threshold", &renderer->bloom_th, 0.0f, 10.0f);
-		ImGui::SliderFloat("Bloom Soft Threshold", &renderer->bloom_soft_th, 0.0f, 1.0f);
-		ImGui::SliderInt("Bloom Blur Iterations", &renderer->blur_iterations, 0, 15);
-
-		ImGui::SliderFloat("Minimum DOF distance", &renderer->min_dist_dof, 0, 1000);
-		ImGui::SliderFloat("Maximum DOF distance", &renderer->max_dist_dof, renderer->min_dist_dof, 1000);
-		ImGui::SliderFloat("Focal distance", &renderer->focal_dist, 0, 5000);
-		ImGui::SliderFloat("Grain", &renderer->noise_amount, 0.0f, 1.0f);
-		ImGui::SliderFloat("Lens Distortion", &renderer->lens_dist, 0.0f, 5.0f);
-		ImGui::SliderFloat("LUT amount", &renderer->LUT_amount, 0.0f, 1.0f);
 	}
 
 	ImGui::Checkbox("Wireframe", &render_wireframe);
@@ -519,26 +518,61 @@ void Application::onResize(int width, int height)
 
 	if (renderer->gbuffers_fbo->fbo_id != 0) {
 		renderer->gbuffers_fbo->~FBO();
+		renderer->gbuffers_fbo = new FBO();
 
 		Texture* albedo = new Texture(window_width, window_height, GL_RGBA, GL_HALF_FLOAT);
 		Texture* normals = new Texture(window_width, window_height, GL_RGBA, GL_UNSIGNED_BYTE);
 		Texture* extra = new Texture(window_width, window_height, GL_RGBA, GL_HALF_FLOAT);
+		Texture* irradiance = new Texture(window_width, window_height, GL_RGB, GL_HALF_FLOAT);
 		Texture* depth = new Texture(window_width, window_height, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, false);
 
-		std::vector<Texture*> text = { albedo,normals,extra };
+		std::vector<Texture*> text = { albedo,normals,extra,irradiance };
 
 		renderer->gbuffers_fbo->setTextures(text, depth);
 	}
 
 	renderer->illumination_fbo->~FBO();
+	renderer->illumination_fbo = new FBO();
 	renderer->illumination_fbo->create(window_width, window_height, 1, GL_RGBA, GL_HALF_FLOAT, true);
 
 	Texture* ssao_texture = new Texture(window_width * 0.5, window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
 	Texture* ssao_texture_blur = new Texture(window_width * 0.5, window_height * 0.5, GL_LUMINANCE, GL_UNSIGNED_BYTE);
 	std::vector<Texture*> textures = { ssao_texture, ssao_texture_blur };
 
-	renderer->ssao->ssao_fbo->~FBO();
-	renderer->ssao->ssao_fbo = new FBO();
-	renderer->ssao->ssao_fbo->setTextures(textures);
+	renderer->illumination_fbo_blurred->~FBO();
+	renderer->illumination_fbo_blurred = new FBO();
+	renderer->illumination_fbo_blurred->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGBA,       //four channels
+		GL_FLOAT,//half float
+		false);        //add depth_texture)
+
+	renderer->reflections_fbo->~FBO();
+	renderer->reflections_fbo = new FBO();
+	renderer->reflections_fbo->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGB,       //four channels
+		GL_UNSIGNED_BYTE,//half float
+		false);
+
+	renderer->bloom_fbo->~FBO();
+	renderer->bloom_fbo = new FBO();
+	renderer->bloom_fbo->create(Application::instance->window_width, Application::instance->window_height,
+		1,            //one textures
+		GL_RGBA,       //four channels
+		GL_FLOAT,//half float
+		false);
+
+	renderer->ping->~Texture();
+	renderer->pong->~Texture();
+	renderer->ping = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
+	renderer->pong = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
+
+	renderer->decals_fbo->~FBO();
+	Texture* albedo_decals = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_FLOAT);
+	Texture* normals_decals = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_UNSIGNED_BYTE);
+	Texture* extra_decals = new Texture(Application::instance->window_width, Application::instance->window_height, GL_RGBA, GL_HALF_FLOAT);
+	std::vector<Texture*> text_decals = { albedo_decals,normals_decals,extra_decals };
+	renderer->decals_fbo->setTextures(text_decals);
 }
 

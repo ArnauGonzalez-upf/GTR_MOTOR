@@ -9,17 +9,22 @@
 		{
 			"name": "reflection_probe1",
 			"type": "REFLECTION_PROBE",
-			"position": [ 232, 226, 61 ]
+			"position": [ -52, 100, 223 ]
 		},
 		{
 			"name": "reflection_probe2",
 			"type": "REFLECTION_PROBE",
-			"position": [ -28, 56, 65 ]
+			"position": [ -72, 112, -90 ]
 		},
 		{
 			"name": "reflection_probe3",
 			"type": "REFLECTION_PROBE",
-			"position": [ -28, 56, 65 ]
+			"position": [ 325, 292, -150 ]
+		},
+		{
+			"name": "reflection_probe4",
+			"type": "REFLECTION_PROBE",
+			"position": [ 302, 290, 214 ]
 		},
 		{
 			"name": "floor",

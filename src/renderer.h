@@ -77,9 +77,6 @@ namespace GTR {
 		bool volumetric;
 		bool show_reflection_probes;
 		float air_density;
-		float bloom_th;
-		float bloom_soft_th;
-		int blur_iterations;
 
 		int depth_light;
 		int shadow_count; //counter for shadows.
@@ -113,13 +110,14 @@ namespace GTR {
 
 		Matrix44 prev_vp;
 
+		//Post FX parameters
+		float bloom_th;
+		float bloom_soft_th;
+		int blur_iterations;
 		float focal_dist;
 		float min_dist_dof;
 		float max_dist_dof;
-		float LUT_amount;
-
 		float noise_amount;
-
 		float lens_dist;
 
 		Renderer();

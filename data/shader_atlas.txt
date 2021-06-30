@@ -1062,17 +1062,12 @@ void main()
 	color.xyz *= light;
 	color.xyz += emissive.xyz;
 
-	if (u_reflections && u_deferred && color.a < 0.7)
+	if (u_reflections && u_deferred)
 	{
-		vec3 reflection;
-		vec3 R;
-		if(u_reflections)
-		{
-			R = reflect(-V,N);
-			//compute the reflection
-			reflection = baseColor.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz;
-			color.xyz += reflection;
-		}
+		vec3 R = reflect(-V,N);
+		//compute the reflection
+		vec3 reflection = baseColor.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
+		color.xyz += reflection;
 	}
 
 	FragColor = color;
@@ -1220,15 +1215,9 @@ void main()
 	vec3 V = normalize(u_camera_position - v_world_position);
 
 	if(u_reflections){
-		vec3 F0 = vec3(0.04); //common material
-		F0 = mix( F0, color.xyz, metallic );
-		vec3 F = fresnelSchlickRoughness( max(dot(N, V), 0.0), F0, roughness);
-		vec3 kS = F;
-		vec3 kD = 1.0 - kS;
-		kD *= 1.0 - metallic;	
 		vec3 R = reflect(-V,N);
 		//compute the reflection
-		reflection = color.xyz * kD * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz;
+		reflection = color.xyz * textureLod( u_environment_texture, R, roughness * 5.0 ).xyz * metallic;
 		emissive.xyz += reflection;
 	}
 
@@ -1997,8 +1986,7 @@ void main()
 {
 
 	vec4 color = texture2D( u_texture, v_uv );
-	vec3 bloomColor = texture(u_texture_bloom, v_uv).rgb;
-	vec3 rgb = color.xyz;// + bloomColor;
+	vec3 rgb = color.xyz;
 	
 	if (u_hdr)
 	{
@@ -2245,7 +2233,7 @@ const float reci_num_iter_f = 1.0 / float(num_iter);
 
 void main()
 {	
-	vec2 uv= v_uv; //(gl_FragCoord.xy/resolution.xy*.5)+.25;
+	vec2 uv= v_uv;//(gl_FragCoord.xy/resolution.xy*.5) +.25;
 
 	vec4 sumcol = vec4(0.0);
 	vec4 sumw = vec4(0.0);	
@@ -2254,46 +2242,10 @@ void main()
 		float t = float(i) * reci_num_iter_f;
 		vec4 w = spectrum_offset( t );
 		sumw += w;
-		sumcol += w * texture2D( tInput, barrelDistortion(uv, .3 * u_lens_dist*t ) );
+		sumcol += w * texture2D( tInput, barrelDistortion(uv, .3 * u_lens_dist * t ) );
 	}
 		
 	gl_FragColor = sumcol / sumw;
-}
-
-\lut.fs
-
-#version 330 core
-
-precision highp float;
-precision highp float;
-
-in vec2 v_uv;
-
-uniform sampler2D u_texture;
-uniform sampler2D u_textureB;
-uniform float u_amount;
-
-void main() {
-     vec2 v_coord = v_uv;
-
-     lowp vec4 color = clamp( texture2D(u_texture, v_coord), vec4(0.0), vec4(1.0) );
-     mediump float blueColor = color.b * 63.0;
-     mediump vec2 quad1;
-     quad1.y = floor(floor(blueColor) / 8.0);
-     quad1.x = floor(blueColor) - (quad1.y * 8.0);
-     mediump vec2 quad2;
-     quad2.y = floor(ceil(blueColor) / 8.0);
-     quad2.x = ceil(blueColor) - (quad2.y * 8.0);
-     highp vec2 texPos1;
-     texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.r);
-     texPos1.y = 1.0 - ((quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.g ));
-     highp vec2 texPos2;
-     texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.r);
-     texPos2.y = 1.0 - ((quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * color.g));
-     lowp vec4 newColor1 = texture2D(u_textureB, texPos1);
-     lowp vec4 newColor2 = texture2D(u_textureB, texPos2);
-     lowp vec4 newColor = mix(newColor1, newColor2, fract(blueColor));
-     gl_FragColor = vec4( mix( color.rgb, newColor.rgb, u_amount), color.w);
 }
 
 \grain.fs
